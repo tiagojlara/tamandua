@@ -224,7 +224,10 @@ test('done ends the run with the answer metadata and nothing follows it', async 
   assert.equal(finished.type, EventType.RUN_FINISHED);
   assert.equal(finished.threadId, THREAD);
   assert.equal(finished.runId, RUN);
-  assert.deepEqual(finished.result, { messageId: 12, conversationId: 7, model: 'fake-model', refusals: [], aborted: false });
+  // The envelope carries the answer's identity and nothing else: tool activity is not forwarded (each
+  // call already arrived as its own TOOL_CALL_* quartet) and the old `refusals` field left with the
+  // read-only guard, when the assistant gained the full tool set.
+  assert.deepEqual(finished.result, { messageId: 12, conversationId: 7, model: 'fake-model', aborted: false });
   // The bridge emits no envelope of its own beyond the RUN_FINISHED the runner consumes; RUN_STARTED in
   // particular would arrive twice and make the verifier fail the stream.
   assert.equal(typesOf(events).filter((type) => type === EventType.RUN_STARTED).length, 0);
