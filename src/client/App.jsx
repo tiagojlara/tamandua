@@ -5,6 +5,7 @@ import Modal from './components/Modal.jsx';
 import { Activity, CashFlow, Dividends, NetWorth, Overview, Planning, Portfolio, Settings } from './components/Views.jsx';
 import Assistant from './components/Assistant.jsx';
 import { TamanduaProvider } from './tamanduaState.jsx';
+import { getLanguage, setLanguage, t } from './i18n.js';
 
 const initialSettings = { homeCurrency: 'EUR', fxProvider: 'frankfurter', currentAge: 35, retirementAge: 65, monthlyContribution: 500, monthlyIncome: 2500, oneTimeContribution: 0, monthlyWithdrawal: 0, inflation: .02, scenarios: [.03, .05, .07] };
 const titles = { overview: 'Overview', portfolio: 'Portfolio', networth: 'Net worth', activity: 'Activity', dividends: 'Dividends', cashflow: 'Cash flow', assistant: 'Ask Tamanduá', planning: 'Retirement plan', settings: 'Settings & backup' };
@@ -18,6 +19,7 @@ const emptyData = { accounts: [], assets: [], transactions: [], prices: [], divi
 
 export default function App() {
   const [page, setPage] = useState(pageFromLocation); const [data, setData] = useState(emptyData); const [settings, setSettings] = useState(initialSettings);
+  const [language, setLanguageState] = useState(getLanguage);
   const [modal, setModal] = useState(null); const [editing, setEditing] = useState(null); const [busy, setBusy] = useState(true); const [error, setError] = useState('');
   // Bumped on every reload of the records, so the AI summary cards can re-check whether their
   // cached answer still matches the data without polling or re-asking the model.
@@ -33,10 +35,10 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
   useEffect(() => {
-    document.title = `Tamanduá · ${titles[page]}`;
+    document.title = `Tamanduá · ${t(titles[page])}`;
     // Normalize any unknown deep link (e.g. /anything) back to the page we actually render.
     if (window.location.pathname !== pathFor(page)) window.history.replaceState({ page }, '', pathFor(page));
-  }, [page]);
+  }, [page, language]);
   const refresh = useCallback(async () => {
     try {
       const [summary, accounts, assets, transactions, prices, dividends, cash_balances, physical_assets, physical_valuations, liabilities, liability_balances, fx_rates, cash_flow_categories, cash_flow_transactions, saved] = await Promise.all([
@@ -46,6 +48,8 @@ export default function App() {
       const storedCurrency = typeof saved.homeCurrency === 'string' ? saved.homeCurrency : saved.homeCurrency?.homeCurrency;
       const homeCurrency = ['EUR', 'SEK', 'USD', 'BRL'].includes(storedCurrency) ? storedCurrency : initialSettings.homeCurrency;
       setSettings({ ...initialSettings, ...saved, homeCurrency });
+      const savedLanguage = saved.language === 'pt-BR' ? 'pt-BR' : 'en';
+      setLanguage(savedLanguage); setLanguageState(savedLanguage); document.documentElement.lang = savedLanguage;
       // Repair settings written by the old overview currency selector, which nested this value.
       if (saved.homeCurrency !== homeCurrency) await api('settings', { method: 'PUT', body: JSON.stringify({ homeCurrency }) });
       setError('');
@@ -80,7 +84,9 @@ export default function App() {
     if (next.fx_rate) { await api('fx_rates', { method: 'POST', body: JSON.stringify(next.fx_rate) }); await refresh(); return; }
     const merged = { ...settings, ...next };
     // Send only the changed keys: a full-state PUT could clobber settings another request updated server-side.
-    setSettings(merged); await api('settings', { method: 'PUT', body: JSON.stringify(next) }); await refresh();
+    setSettings(merged);
+    if (next.language) { setLanguage(next.language); setLanguageState(next.language); document.documentElement.lang = next.language; }
+    await api('settings', { method: 'PUT', body: JSON.stringify(next) }); await refresh();
   };
   const exportCsv = () => {
     const header = ['Name', 'Ticker', 'Type', 'Currency', 'Quantity', 'Cost basis', 'Latest price', 'Price date', 'Price source', 'Current value', 'Unrealized gain'];
