@@ -24,7 +24,7 @@ const AGENT_ID = 'tamandua';
 // the person reads before anything leaves the machine, so they belong here rather than in a stylesheet.
 const LABELS = {
   chatInputPlaceholder: 'Ask about your records — Enter sends, Shift+Enter adds a line',
-  welcomeMessageText: 'Answers and actions using your own records. Tamanduá uses this app’s local tools and keeps amounts in their original currencies.',
+  welcomeMessageText: 'Read-only answers, from your own records. Tamanduá looks them up through this app’s local tools and quotes what it finds, per currency.',
   chatDisclaimerText: '',
 };
 
