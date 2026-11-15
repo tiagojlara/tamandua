@@ -1,0 +1,3 @@
+- insert:
+    - id: tamandua-charts
+      name: '@local/tamandua-charts'

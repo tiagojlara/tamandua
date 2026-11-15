@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tamandua charts",
+    "description": "Draws a chart inside the Tamandua tool cards: portfolio value by currency, monthly cash flow with category spending, and dividends received. Requires the Tamandua MCP connection and the app running."
+  }
+}
