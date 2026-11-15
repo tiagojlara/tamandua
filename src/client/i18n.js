@@ -25,12 +25,42 @@ const ptMore = {
   'Account name':'Nome da conta','Currency':'Moeda','Asset name':'Nome do ativo','Ticker / identifier':'Ticker / identificador','Asset type':'Tipo de ativo','Stock':'Ação','Mutual fund':'Fundo mútuo','Bond':'Título','Cash':'Dinheiro','Other':'Outro','Activity type':'Tipo de atividade','Asset (for buy/sell)':'Ativo (para compra/venda)','Date':'Data','Quantity':'Quantidade','Unit price':'Preço unitário','Cash flow amount':'Valor do fluxo de caixa','Fees':'Taxas','Price date':'Data do preço','Price':'Preço','Payment date':'Data do pagamento','Amount':'Valor','Shares held (optional)':'Ações em carteira (opcional)','Cash asset (optional)':'Ativo de caixa (opcional)','Balance date':'Data do saldo','Cash balance':'Saldo em dinheiro','Property':'Imóvel','Vehicle':'Veículo','Purchase date (optional)':'Data da compra (opcional)','Purchase price (optional)':'Preço de compra (opcional)','Physical asset':'Ativo físico','Valuation date':'Data da avaliação','Estimated value':'Valor estimado','Loan name':'Nome do empréstimo','Loan type':'Tipo de empréstimo','Mortgage':'Financiamento imobiliário','Vehicle finance':'Financiamento de veículo','Personal loan':'Empréstimo pessoal','Linked physical asset (optional)':'Ativo físico vinculado (opcional)','Original amount':'Valor original','Interest rate % (optional)':'Taxa de juros % (opcional)','Loan':'Empréstimo','Remaining balance':'Saldo restante','Category name':'Nome da categoria','Type':'Tipo','Status':'Status','Payee / merchant (optional)':'Beneficiário / estabelecimento (opcional)','Description (optional)':'Descrição (opcional)','Account (optional)':'Conta (opcional)','income':'receita','expense':'despesa','buy':'compra','sell':'venda','deposit':'depósito','withdrawal':'retirada','fee':'taxa','Account-level balance':'Saldo da conta','Unlinked':'Sem vínculo','Choose a category':'Escolha uma categoria','Not selected':'Não selecionado',
 };
 
+// Strings that only the Overview dashboard and its charts use. Kept in their own object so the page
+// can be read as one piece instead of being spread through the older dictionaries.
+const ptOverview = {
+  'As of':'Em','position':'posição','positions':'posições','Investments':'Investimentos','Details':'Detalhes',
+  'Partly at purchase price':'Em parte pelo preço de compra',
+  'Holdings without a price recorded before a date are valued at their purchase price.':'Posições sem preço registrado antes de uma data são avaliadas pelo preço de compra.',
+  'points without a dated rate':'pontos sem taxa na data','period change':'variação no período',
+  'Net recorded this month':'Resultado registrado no mês',
+  'Investments and cash + physical assets − recorded loans':'Investimentos e dinheiro + ativos físicos − empréstimos registrados',
+  'No entries yet':'Nenhum lançamento ainda',
+  'Record income and spending to see the month at a glance.':'Registre receitas e despesas para ver o mês em resumo.',
+  'Dividends received':'Dividendos recebidos','payment':'pagamento','payments':'pagamentos','last paid':'último em',
+  'No dividends recorded yet':'Nenhum dividendo registrado ainda',
+  'Recorded payments appear here by currency.':'Os pagamentos registrados aparecem aqui por moeda.',
+  'Includes positions valued at purchase price':'Inclui posições avaliadas pelo preço de compra',
+  'A price or exchange rate is missing for this date':'Falta um preço ou uma taxa de câmbio nesta data',
+  'PORTFOLIO':'PORTFÓLIO','all time':'todo o período',
+};
+
+// Lookup tolerates the surrounding whitespace JSX adds around a sentence that follows another node
+// ("<span>✳</span> Planning tool only …" arrives with a leading space), which is why some strings used
+// to stay in English even though the dictionary had them.
 export function t(value) {
   if (language !== 'pt-BR' || typeof value !== 'string') return value;
-  if (pt[value] || ptMore[value]) return pt[value] || ptMore[value];
-  const divider = value.indexOf(' · ');
-  const leading = value.slice(0, divider);
-  if (divider > 0 && (pt[leading] || ptMore[leading])) return `${pt[leading] || ptMore[leading]}${value.slice(divider)}`;
+  const core = value.trim();
+  if (!core) return value;
+  const leading = value.slice(0, value.indexOf(core));
+  const trailing = value.slice(value.indexOf(core) + core.length);
+  const exact = ptOverview[core] || pt[core] || ptMore[core];
+  if (exact) return `${leading}${exact}${trailing}`;
+  const divider = core.indexOf(' · ');
+  if (divider > 0) {
+    const head = core.slice(0, divider);
+    const label = ptOverview[head] || pt[head] || ptMore[head];
+    if (label) return `${leading}${label}${core.slice(divider)}${trailing}`;
+  }
   return value;
 }
 

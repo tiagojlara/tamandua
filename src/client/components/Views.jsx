@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { DividendChart, FlowCategoryChart, PortfolioValueChart, ScenarioChart } from './Charts.jsx';
-import { api, convertRate, currencies, getHomeValue, money, today } from '../api.js';
+import { DividendChart, Donut, FlowCategoryChart, PortfolioValueChart, ScenarioChart, chartPalette } from './Charts.jsx';
+import { api, currencies, money, today } from '../api.js';
 import { t } from '../i18n.js';
-import { periodReturn, portfolioHistory, roiPercent } from '../history.mjs';
+import { historyStats, portfolioHistory } from '../history.mjs';
+import { cashFlowSnapshot, dividendSnapshot, netWorthSnapshot, portfolioByAccount, portfolioMix } from '../overview.mjs';
 import { cashFlowTotals, categoryBreakdown, monthLabel, monthOf, shiftMonth } from '../cashflow.mjs';
 import { projectRetirement } from '../../projection.mjs';
 import SummaryCard from './SummaryCard.jsx';
@@ -33,63 +34,160 @@ export function DataTable({ columns, rows, empty, onDelete, onEdit, pageSize = 0
 }
 export function Overview({ data, homeValue, settings, navigate, revision = 0 }) {
   const [period, setPeriod] = useState('1Y');
-  const income = Object.entries(data.summary.dividendIncomeByCurrency || {}).map(([currency, amount]) => money(amount, currency)).join(' · ') || '—';
-  const investmentValue = getHomeValue(data.summary.holdings.filter((holding) => !holding.is_cash_balance), data.fx_rates, settings.homeCurrency);
-  const investmentGain = investmentValue.value - investmentValue.cost;
-  const roi = investmentValue.complete ? roiPercent(investmentValue.value, investmentValue.cost) : null;
-  const history = portfolioHistory({ ...data, rates: data.fx_rates, homeCurrency: settings.homeCurrency });
+  const homeCurrency = settings.homeCurrency;
+  const history = useMemo(() => portfolioHistory({
+    assets: data.assets,
+    transactions: data.transactions,
+    prices: data.prices,
+    dividends: data.dividends,
+    cash_balances: data.cash_balances,
+    rates: data.fx_rates,
+    homeCurrency,
+  }), [data, homeCurrency]);
   const latestDate = history.at(-1)?.date || today();
   const startDate = (() => {
-    const date = new Date(`${latestDate}T12:00:00`);
     if (period === 'ALL') return null;
+    const date = new Date(`${latestDate}T12:00:00`);
     if (period === 'YTD') return `${date.getFullYear()}-01-01`;
     if (period === '1Y') date.setFullYear(date.getFullYear() - 1);
     else date.setDate(date.getDate() - Number(period.replace('D', '')));
     return date.toISOString().slice(0, 10);
   })();
+  // The point just before the window is prepended, so "period change" compares the window's first day
+  // with the last instead of only the records that happen to fall inside it.
   const prior = startDate ? [...history].reverse().find((point) => point.date < startDate) : null;
   const visible = history.filter((point) => !startDate || point.date >= startDate);
   const periodHistory = prior && visible.length ? [prior, ...visible] : visible;
-  const first = periodHistory[0]; const last = periodHistory.at(-1);
-  const periodChange = periodReturn(periodHistory);
-  const currencyEntries = Object.entries(data.summary.valueByCurrency || {});
-  const accountValues = {};
-  for (const holding of data.summary.holdings) {
-    if (holding.is_cash_balance) {
-      const account = data.accounts.find((item) => item.id === holding.account_id);
-      const label = `${account?.name || 'Account'} · ${holding.currency}`;
-      accountValues[label] = (accountValues[label] || 0) + Number(holding.current_value || 0);
-      continue;
-    }
-    const accountPositions = {};
-    for (const transaction of data.transactions) if (transaction.asset_id === holding.id && ['buy', 'sell'].includes(transaction.kind)) {
-      const key = `${transaction.account_id}:${holding.id}`;
-      accountPositions[key] = (accountPositions[key] || 0) + (transaction.kind === 'buy' ? 1 : -1) * Number(transaction.quantity);
-    }
-    for (const [key, quantity] of Object.entries(accountPositions)) {
-      if (!holding.current_value || !holding.quantity) continue;
-      const accountId = Number(key.split(':')[0]);
-      const account = data.accounts.find((item) => item.id === accountId);
-      const label = `${account?.name || 'Account'} · ${holding.currency}`;
-      accountValues[label] = (accountValues[label] || 0) + holding.current_value * Math.max(0, quantity) / holding.quantity;
-    }
-  }
+  const stats = historyStats(periodHistory);
+
+  const mix = useMemo(() => portfolioMix({ holdings: data.summary.holdings, rates: data.fx_rates, homeCurrency }), [data, homeCurrency]);
+  const accounts = useMemo(() => portfolioByAccount({
+    holdings: data.summary.holdings, accounts: data.accounts, transactions: data.transactions, rates: data.fx_rates, homeCurrency,
+  }), [data, homeCurrency]);
+  const netWorth = useMemo(() => netWorthSnapshot({
+    physicalAssets: data.physical_assets,
+    physicalValuations: data.physical_valuations,
+    liabilities: data.liabilities,
+    liabilityBalances: data.liability_balances,
+    rates: data.fx_rates,
+    homeCurrency,
+  }), [data, homeCurrency]);
+  const flow = useMemo(() => cashFlowSnapshot({
+    entries: data.cash_flow_transactions || [], categories: data.cash_flow_categories || [], fallbackMonth: today(),
+  }), [data]);
+  const dividendIncome = useMemo(() => dividendSnapshot({ dividends: data.dividends || [], asOf: today() }), [data]);
+
   const periods = ['30D', '90D', '180D', 'YTD', '1Y', 'ALL'];
-  return <><div className="metric-grid metric-grid-five">
-    <Metric label={`PORTFOLIO VALUE · ${settings.homeCurrency}`} value={homeValue.complete ? money(homeValue.value, settings.homeCurrency) : 'Rates or prices needed'} detail="Current holdings and saved cash balances"/>
-    <Metric label={`INVESTED · ${settings.homeCurrency}`} value={money(investmentValue.cost, settings.homeCurrency)} detail="Weighted-average basis · fees included"/>
-    <Metric label="UNREALIZED GAIN / LOSS" value={investmentValue.complete ? money(investmentGain, settings.homeCurrency) : '—'} tone={investmentGain >= 0 ? 'text-positive' : 'text-negative'} detail="Open investment positions only"/>
-    <Metric label="UNREALIZED ROI" value={roi === null ? '—' : `${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%`} tone={roi === null ? '' : roi >= 0 ? 'text-positive' : 'text-negative'} detail="Gain ÷ cost basis · excludes cash and realized gains"/>
-    <Metric label="DIVIDENDS RECEIVED" value={income} detail={<button className="text-action" onClick={() => navigate('dividends')}>View dividend history →</button>}/>
-  </div>
+  const periodShort = { '30D': '1M', '90D': '3M', '180D': '6M', YTD: 'YTD', '1Y': '1Y', ALL: t('All') };
+  const netValue = mix.total + netWorth.physical - netWorth.debt;
+  const grossAssets = mix.total + netWorth.physical;
+  const netComplete = mix.complete && netWorth.complete;
+  const changeTone = stats.change == null ? '' : stats.change >= 0 ? 'is-up' : 'is-down';
+  const joinedDividends = (field = 'allTime') => dividendIncome.currencies.map((row) => money(row[field], row.currency)).join(' · ');
+  const dividendMax = dividendIncome.currencies.reduce((max, row) => Math.max(max, Number(row.window)), 0) || 1;
+  const spendingRows = flow.spending.slice(0, 3);
+  const spendingMax = spendingRows.reduce((max, row) => Math.max(max, Number(row.total)), 0) || 1;
+
+  return <>
+    <div className="dash-hero">
+      <div className="dash-hero-main">
+        <span className="dash-kicker">{t('PORTFOLIO VALUE')} · {homeCurrency}</span>
+        <div className="dash-total">{homeValue.complete ? money(homeValue.value, homeCurrency) : t('Rates or prices needed')}</div>
+        <div className="dash-chips">
+          <span className={`dash-chip ${changeTone}`}>{stats.changeValue == null ? '—' : `${stats.changeValue >= 0 ? '+' : '−'}${money(Math.abs(stats.changeValue), homeCurrency)}`}<small>{periodShort[period]}</small></span>
+          <span className="dash-chip">{t('As of')} {latestDate}</span>
+          <span className="dash-chip">{mix.holdings.length} {mix.holdings.length === 1 ? t('position') : t('positions')}</span>
+          {stats.estimatedFrom && <span className="dash-chip is-warn" title={t('Holdings without a price recorded before a date are valued at their purchase price.')}>{t('Partly at purchase price')}</span>}
+        </div>
+      </div>
+      <dl className="dash-hero-stats">
+        <div><dt>{t('INVESTED')}</dt><dd>{money(mix.investmentCost, homeCurrency)}</dd></div>
+        <div><dt>{t('UNREALIZED GAIN / LOSS')}</dt><dd className={mix.investmentGain >= 0 ? 'text-positive' : 'text-negative'}>{money(mix.investmentGain, homeCurrency)}</dd></div>
+        <div><dt>{t('UNREALIZED ROI')}</dt><dd className={mix.roi != null && mix.roi < 0 ? 'text-negative' : 'text-positive'}>{mix.roi == null ? '—' : `${mix.roi >= 0 ? '+' : '−'}${Math.abs(mix.roi).toFixed(2)}%`}</dd></div>
+      </dl>
+    </div>
+
+    <div className="dash-grid">
+      <Section title={`Portfolio value history · ${homeCurrency}`}
+        action={<div className="period-controls" role="group" aria-label={t('Portfolio history period')}>{periods.map((option) => <button type="button" key={option} aria-pressed={period === option} className={period === option ? 'period-button selected' : 'period-button'} onClick={() => setPeriod(option)}>{periodShort[option]}</button>)}</div>}>
+        <p className="panel-note">{t('Historical holdings and cash balances converted using rates available on each date. Period change is not adjusted for contributions or withdrawals.')}</p>
+        <PortfolioValueChart data={periodHistory} currency={homeCurrency} height={330}/>
+        {stats.estimatedFrom && <p className="panel-note">{t('Holdings without a price recorded before a date are valued at their purchase price.')}</p>}
+        <div className="history-footer">
+          <span>{stats.first ? stats.first.date : '—'} → {stats.last ? stats.last.date : '—'}{stats.incomplete ? ` · ${stats.incomplete} ${t('points without a dated rate')}` : ''}</span>
+          {stats.change !== null && <b className={stats.change >= 0 ? 'text-positive' : 'text-negative'}>{stats.change >= 0 ? '+' : '−'}{new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Math.abs(stats.change))}% {t('period change')}</b>}
+        </div>
+      </Section>
+
+      <Section title={t('Portfolio allocation')} action={<button className="text-action" onClick={() => navigate('portfolio')}>{t('View portfolio')} →</button>}>
+        <Donut rows={mix.currencies.map((row) => ({ name: row.currency, value: row.homeValue }))} currency={homeCurrency} total={mix.total} empty={t('Add an asset and a manual price to see allocation.')}/>
+        <div className="mix-list">
+          {mix.currencies.map((row, index) => <div className="mix-row" key={row.currency}>
+            <i className="mix-swatch" style={{ background: chartPalette[index % chartPalette.length] }}/>
+            <span className="mix-row-name">{row.currency}<small>{row.positions} {row.positions === 1 ? t('position') : t('positions')} · {money(row.nativeValue, row.currency)}</small></span>
+            <b className="mix-row-value">{money(row.homeValue, homeCurrency)}<small>{row.share.toFixed(0)}%</small></b>
+          </div>)}
+          {!mix.currencies.length && <Empty>{t('Add an asset and a manual price to see allocation.')}</Empty>}
+        </div>
+        {mix.total > 0 && <div className="dash-split">
+          <div className="dash-split-bar"><span style={{ width: `${mix.investmentShare}%`, background: '#2f6e5b' }}/><span style={{ width: `${mix.cashShare}%`, background: '#e0a06a' }}/></div>
+          <div className="dash-split-legend"><span><i style={{ background: '#2f6e5b' }}/>{t('Investments')} <b>{money(mix.investments, homeCurrency)}</b></span><span><i style={{ background: '#e0a06a' }}/>{t('Cash')} <b>{money(mix.cash, homeCurrency)}</b></span></div>
+        </div>}
+      </Section>
+    </div>
+
+    <div className="dash-cards">
+      <Section className="dash-card" title={t('Net worth')} action={<button className="text-action" onClick={() => navigate('networth')}>{t('Details')} →</button>}>
+        <div className="dash-card-value">{netComplete ? money(netValue, homeCurrency) : t('FX rate needed')}<small>{t('Investments and cash + physical assets − recorded loans')}</small></div>
+        <div className="dash-card-rows">
+          <div className="dash-card-row"><span>{t('INVESTMENTS & CASH')}</span><b>{homeValue.complete ? money(mix.total, homeCurrency) : '—'}</b><span className="dash-bar"><i style={{ width: `${grossAssets > 0 ? mix.total / grossAssets * 100 : 0}%`, background: '#2f6e5b' }}/></span></div>
+          <div className="dash-card-row"><span>{t('PHYSICAL ASSETS')}</span><b>{netWorth.complete ? money(netWorth.physical, homeCurrency) : '—'}</b><span className="dash-bar"><i style={{ width: `${grossAssets > 0 ? netWorth.physical / grossAssets * 100 : 0}%`, background: '#89a895' }}/></span></div>
+          <div className="dash-card-row"><span>{t('LOAN BALANCES')}</span><b className={netWorth.debt > 0 ? 'text-negative' : ''}>{money(netWorth.debt, homeCurrency)}</b><span className="dash-bar"><i style={{ width: `${grossAssets > 0 ? Math.min(100, netWorth.debt / grossAssets * 100) : 0}%`, background: '#c57660' }}/></span></div>
+        </div>
+      </Section>
+
+      <Section className="dash-card" title={t('Cash flow')} action={<button className="text-action" onClick={() => navigate('cashflow')}>{monthLabel(flow.month)} →</button>}>
+        {flow.currencies.length ? <>
+          <div className="dash-card-value">{flow.currencies.map((currency) => `${flow.totals[currency].net < 0 ? '−' : '+'}${money(Math.abs(flow.totals[currency].net), currency)}`).join(' · ')}<small>{t('Net recorded this month')}</small></div>
+          <div className="dash-card-rows">
+            {flow.currencies.slice(0, 2).map((currency) => <div className="dash-flow-row" key={currency}>
+              <span>{currency}</span>
+              <b className="text-positive">+{money(flow.totals[currency].income, currency)}</b>
+              <b className="text-negative">−{money(flow.totals[currency].expense, currency)}</b>
+            </div>)}
+            {spendingRows.map((row) => <div className="dash-card-row" key={`${row.currency}-${row.category_id}`}>
+              <span>{row.name} · {row.currency}</span><b>{money(row.total, row.currency)}</b>
+              <span className="dash-bar"><i style={{ width: `${Number(row.total) / spendingMax * 100}%`, background: '#e0a06a' }}/></span>
+            </div>)}
+          </div>
+        </> : <Empty title={t('No entries yet')}>{t('Record income and spending to see the month at a glance.')}</Empty>}
+      </Section>
+
+      <Section className="dash-card" title={t('Dividends received')} action={<button className="text-action" onClick={() => navigate('dividends')}>{t('History')} →</button>}>
+        {dividendIncome.currencies.length ? <>
+          <div className="dash-card-value">{joinedDividends('window') || '—'}<small>{t('Last 12 months')} · {t('all time')} {joinedDividends()}</small></div>
+          <div className="dash-card-rows">
+            {dividendIncome.currencies.map((row) => <div className="dash-card-row" key={row.currency}>
+              <span>{row.currency}<small className="dash-row-sub">{row.payments} {row.payments === 1 ? t('payment') : t('payments')} · {t('last paid')} {row.latest}</small></span>
+              <b>{money(row.window, row.currency)}</b>
+              <span className="dash-bar"><i style={{ width: `${Number(row.window) / dividendMax * 100}%`, background: '#aab67a' }}/></span>
+            </div>)}
+          </div>
+        </> : <Empty title={t('No dividends recorded yet')}>{t('Recorded payments appear here by currency.')}</Empty>}
+      </Section>
+
+      <Section className="dash-card" title={t('Accounts')} action={<button className="text-action" onClick={() => navigate('portfolio')}>{t('View portfolio')} →</button>}>
+        {accounts.length ? <div className="dash-card-rows">
+          {accounts.slice(0, 5).map((row) => <div className="dash-card-row" key={row.id}>
+            <span>{row.name} · {row.currency}</span><b>{money(row.nativeValue, row.currency)}</b>
+            <span className="dash-bar"><i style={{ width: `${row.share}%`, background: '#89a895' }}/></span>
+          </div>)}
+        </div> : <Empty>{t('Account allocation appears after holdings or cash balances are entered.')}</Empty>}
+      </Section>
+    </div>
+
+    <Section title={t('Your holdings')} action={<button className="text-action" onClick={() => navigate('portfolio')}>{t('View portfolio')} <span aria-hidden>→</span></button>}><HoldingsTable holdings={data.summary.holdings.filter((holding) => holding.quantity > 0).slice(0, 6)}/></Section>
     <SummaryCard placement="overview" title="Tamanduá summary · your holdings" navigate={navigate} revision={revision}/>
-    <div className="content-grid content-grid-main"><Section title={`Portfolio value history · ${settings.homeCurrency}`}>
-      <div className="period-controls" role="group" aria-label="Portfolio history period">{periods.map((option) => <button type="button" key={option} aria-pressed={period === option} className={period === option ? 'period-button selected' : 'period-button'} onClick={() => setPeriod(option)}>{option === '30D' ? '1M' : option === '90D' ? '3M' : option === '180D' ? '6M' : option === 'ALL' ? 'All' : option}</button>)}</div>
-      <p className="panel-note">Historical holdings and cash balances converted using rates available on each date. Period change is not adjusted for contributions or withdrawals.</p>
-      <PortfolioValueChart data={periodHistory} currency={settings.homeCurrency}/>
-      <div className="history-footer">{first && last && <span>{first.date} → {last.date}</span>}{periodChange !== null && <b className={periodChange >= 0 ? 'text-positive' : 'text-negative'}>{periodChange >= 0 ? '+' : ''}{periodChange.toFixed(2)}% period change</b>}</div>
-    </Section><Section title="Portfolio allocation"><div className="allocation-currency">{currencyEntries.map(([currency, amount]) => <div className="allocation-row" key={currency}><span>{currency}</span><b>{money(amount, currency)}</b></div>)}{!currencyEntries.length && <Empty>Add an asset and a manual price to see allocation.</Empty>}</div><div className="divider"/><h3 className="subheading">By account · original currencies</h3>{Object.entries(accountValues).map(([label, amount]) => <div className="allocation-row" key={label}><span>{label}</span><b>{money(amount, label.split(' · ').at(-1))}</b></div>)}{!Object.keys(accountValues).length && <p className="panel-note">Account allocation appears after holdings or cash balances are entered.</p>}</Section></div>
-    <Section title="Your holdings" action={<button className="text-action" onClick={() => navigate('portfolio')}>View portfolio <span aria-hidden>→</span></button>}><HoldingsTable holdings={data.summary.holdings.filter((holding) => holding.quantity > 0).slice(0, 6)}/></Section>
   </>;
 }
 
@@ -253,13 +351,21 @@ export function CashFlow({ data, onAdd, onDelete, onEdit, navigate, revision = 0
 }
 
 export function NetWorth({ data, settings, homeValue, onAdd, onDelete, onEdit }) {
-  const latestFor = (rows, key, id) => [...rows].filter((row) => row[key] === id).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)[0];
-  const assets = data.physical_assets.map((asset) => ({ ...asset, valuation: latestFor(data.physical_valuations, 'physical_asset_id', asset.id) }));
-  const loans = data.liabilities.map((loan) => ({ ...loan, snapshot: latestFor(data.liability_balances, 'liability_id', loan.id) }));
-  const convert = (amount, currency, date) => { const rate = convertRate(data.fx_rates, currency, settings.homeCurrency, date || today()); return rate == null ? null : Number(amount) * rate; };
-  const assetTotal = assets.reduce((sum, asset) => sum + (asset.valuation ? convert(asset.valuation.value, asset.currency, asset.valuation.date) ?? 0 : 0), 0);
-  const debtTotal = loans.reduce((sum, loan) => sum + (loan.snapshot ? convert(loan.snapshot.balance, loan.currency, loan.snapshot.date) ?? 0 : 0), 0);
-  const incomplete = assets.some((asset) => asset.valuation && convert(asset.valuation.value, asset.currency, asset.valuation.date) == null) || loans.some((loan) => loan.snapshot && convert(loan.snapshot.balance, loan.currency, loan.snapshot.date) == null);
+  // Same helper the Overview card uses, so the two surfaces cannot disagree about a valuation date or
+  // an exchange rate.
+  const snapshot = netWorthSnapshot({
+    physicalAssets: data.physical_assets,
+    physicalValuations: data.physical_valuations,
+    liabilities: data.liabilities,
+    liabilityBalances: data.liability_balances,
+    rates: data.fx_rates,
+    homeCurrency: settings.homeCurrency,
+  });
+  const assets = snapshot.assets;
+  const loans = snapshot.loans;
+  const assetTotal = snapshot.physical;
+  const debtTotal = snapshot.debt;
+  const incomplete = !snapshot.complete;
   const valuedAssets = assets.filter((asset) => asset.valuation);
   const recordedLoans = loans.filter((loan) => loan.snapshot);
   return <><div className="metric-grid"><Metric label={`INVESTMENTS & CASH · ${settings.homeCurrency}`} value={homeValue.complete ? money(homeValue.value, settings.homeCurrency) : 'Rates or prices needed'} detail="Current portfolio value"/><Metric label={`PHYSICAL ASSETS · ${settings.homeCurrency}`} value={incomplete ? 'FX rate needed' : money(assetTotal, settings.homeCurrency)} detail={`${valuedAssets.length} with a recorded valuation`}/><Metric label={`LOAN BALANCES · ${settings.homeCurrency}`} value={incomplete ? 'FX rate needed' : money(debtTotal, settings.homeCurrency)} detail={`${recordedLoans.length} with a recorded balance`}/><Metric label={`ESTIMATED NET WORTH · ${settings.homeCurrency}`} value={incomplete || !homeValue.complete ? 'Values or FX rates needed' : money(homeValue.value + assetTotal - debtTotal, settings.homeCurrency)} detail="Investments and cash + physical assets − recorded loans"/></div>
