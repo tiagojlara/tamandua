@@ -1,25 +1,4 @@
-function rateOn(rates, from, to, date) {
-  if (from === to) return 1;
-  const eligible = rates.filter((rate) => rate.date <= date);
-  const direct = eligible.filter((rate) => rate.base === from && rate.quote === to).sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (direct) return Number(direct.rate);
-  const inverse = eligible.filter((rate) => rate.base === to && rate.quote === from).sort((a, b) => b.date.localeCompare(a.date))[0];
-  if (inverse) return 1 / Number(inverse.rate);
-  if (from !== 'EUR' && to !== 'EUR') {
-    const fromPerEur = eligible.filter((rate) => rate.base === 'EUR' && rate.quote === from).sort((a, b) => b.date.localeCompare(a.date))[0];
-    const toPerEur = eligible.filter((rate) => rate.base === 'EUR' && rate.quote === to).sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (fromPerEur && toPerEur) return Number(toPerEur.rate) / Number(fromPerEur.rate);
-  }
-  if (to === 'EUR') {
-    const eurPerFrom = eligible.filter((rate) => rate.base === 'EUR' && rate.quote === from).sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (eurPerFrom) return 1 / Number(eurPerFrom.rate);
-  }
-  if (from === 'EUR') {
-    const toPerEur = eligible.filter((rate) => rate.base === 'EUR' && rate.quote === to).sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (toPerEur) return Number(toPerEur.rate);
-  }
-  return null;
-}
+import { convertRate } from './rates.mjs';
 
 export function roiPercent(currentValue, costBasis) {
   if (!(Number(costBasis) > 0)) return null;
@@ -50,7 +29,7 @@ export function portfolioHistory({ assets, transactions, prices, dividends, cash
       if (quantity <= 0) continue;
       const price = [...orderedPrices].reverse().find((row) => row.asset_id === asset.id && row.date <= date);
       if (!price) { complete = false; break; }
-      const fx = rateOn(rates, asset.currency, homeCurrency, date);
+      const fx = convertRate(rates, asset.currency, homeCurrency, date);
       if (fx == null) { complete = false; break; }
       value += quantity * Number(price.price) * fx;
     }
@@ -63,7 +42,7 @@ export function portfolioHistory({ assets, transactions, prices, dividends, cash
         if (!previous || balance.date > previous.date || (balance.date === previous.date && balance.id > previous.id)) cashSlots.set(slot, balance);
       }
       for (const balance of cashSlots.values()) {
-        const fx = rateOn(rates, balance.currency, homeCurrency, date);
+        const fx = convertRate(rates, balance.currency, homeCurrency, date);
         if (fx == null) { complete = false; break; }
         value += Number(balance.balance) * fx;
       }

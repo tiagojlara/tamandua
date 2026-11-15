@@ -13,11 +13,12 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { summaryResponse, cashFlowEntryError, cashFlowCategoryError } = require('../routes/portfolio');
 const { cashFlowMonthSummary } = require('../cashflow-summary');
+const { SUPPORTED_FX, validateManualFxRate, saveManualFxRate } = require('../market-data/fxPairs');
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
 const MONTH = z.string().regex(/^\d{4}-\d{2}$/, 'expected YYYY-MM');
 const CASH_FLOW_KINDS = ['income', 'expense'];
-const CURRENCIES = ['EUR', 'SEK', 'USD', 'BRL'];
+const CURRENCIES = SUPPORTED_FX;
 
 function jsonContent(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
@@ -106,7 +107,7 @@ function buildToolServer(db) {
   });
 
   server.registerTool('list_fx_rates', {
-    description: 'Stored dated FX rates (base, quote, rate, source). Rates are daily reference values, not trading quotes.',
+    description: 'Stored dated FX rates for every supported currency pair (base, quote, rate, source). Rates are daily reference values, not trading quotes.',
     inputSchema: {
       base: z.enum(CURRENCIES).optional(), quote: z.enum(CURRENCIES).optional(),
       date_from: DATE.optional(), date_to: DATE.optional(),
@@ -186,7 +187,7 @@ function buildToolServer(db) {
   });
 
   server.registerTool('save_fx_rate', {
-    description: 'Record a dated manual FX rate between two supported currencies, like the UI FX dialog. Stored with source Manual, which later provider syncs will not overwrite. Use the same pair direction the UI uses (for example base EUR, quote SEK).',
+    description: 'Record a dated manual FX rate between two supported currencies, like the UI FX dialog. Stored with source Manual in both directions, which later provider syncs will not overwrite. Use the same pair direction the UI uses (for example base EUR, quote SEK).',
     inputSchema: {
       date: DATE,
       base: z.enum(CURRENCIES),
@@ -195,11 +196,9 @@ function buildToolServer(db) {
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ date, base, quote, rate }) => {
-    if (base === quote) return errorContent('Base and quote must be different currencies.');
-    db.prepare(`INSERT INTO fx_rates(date, base, quote, rate, source) VALUES(@date, @base, @quote, @rate, 'Manual')
-      ON CONFLICT(date, base, quote) DO UPDATE SET rate = excluded.rate, source = 'Manual'`)
-      .run({ date, base, quote, rate });
-    return jsonContent({ fx_rate: db.prepare('SELECT * FROM fx_rates WHERE date = ? AND base = ? AND quote = ?').get(date, base, quote) });
+    const error = validateManualFxRate({ date, base, quote, rate });
+    if (error) return errorContent(error);
+    return jsonContent({ fx_rate: saveManualFxRate(db, { date, base, quote, rate }) });
   });
 
   server.registerTool('save_dividend', {
