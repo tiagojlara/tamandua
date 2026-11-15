@@ -51,6 +51,19 @@ function sanitizeError(error, { token, model, baseUrl, timeoutMs } = {}) {
   return `The model endpoint failed: ${text}`;
 }
 
+// A chat reply's `content` is not always a string: OpenAI-compatible providers (and LangChain's
+// own converters) hand back content-block arrays such as `[{ type: 'text', text: '...' }]`. Passing
+// that straight to `String()` is how a summary card ended up reading "[object Object]" on screen —
+// the default object rendering — instead of the model's answer. Read the text out of every shape
+// the client may produce, and return '' for anything that carries no text at all.
+function contentText(content) {
+  if (typeof content === 'string') return content;
+  if (content == null) return '';
+  if (Array.isArray(content)) return content.map((part) => contentText(part)).join('');
+  if (typeof content === 'object' && typeof content.text === 'string') return content.text;
+  return '';
+}
+
 // Builds a client from the saved settings. Throws an actionable Error when the assistant is
 // not configured yet, so callers never see an undefined key path.
 async function createChatModel(store, { streaming = false, maxRetries = 1, timeoutMs = CHAT_TIMEOUT_MS, maxTokens } = {}) {
@@ -75,7 +88,7 @@ async function testConnection(store) {
   const started = Date.now();
   try {
     const reply = await client.invoke('Connection test. Reply with exactly the word: ok');
-    const text = typeof reply?.content === 'string' ? reply.content.trim().slice(0, 120) : '';
+    const text = contentText(reply?.content).trim().slice(0, 120);
     return {
       ok: true,
       baseUrl,
@@ -90,4 +103,4 @@ async function testConnection(store) {
   }
 }
 
-module.exports = { createChatModel, testConnection, sanitizeError, CHAT_TIMEOUT_MS, TEST_TIMEOUT_MS, SECRET_PATTERNS };
+module.exports = { createChatModel, testConnection, contentText, sanitizeError, CHAT_TIMEOUT_MS, TEST_TIMEOUT_MS, SECRET_PATTERNS };

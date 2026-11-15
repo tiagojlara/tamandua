@@ -114,11 +114,20 @@ function createSummaryAgent({ summaries }) {
     const { placement, period, system } = ctx.input.forwardedProps || {};
     if (!['overview', 'cashflow'].includes(placement)) throw new Error('Unknown summary placement.');
     const userText = latestUserTurn(ctx.input.messages);
-    let text;
+    let reply;
     try {
-      text = await summaries.completeSummary({ system, userText, placement, period, signal: ctx.abortSignal });
+      reply = await summaries.completeSummary({ system, userText, placement, period, signal: ctx.abortSignal });
     } catch (error) {
       yield runErrorEvent({ code: ERROR_CODES.runFailed, message: error?.message || 'The summary could not be generated.' });
+      return;
+    }
+    // `completeSummary` resolves to `{ text, model }`, not to a string. Streaming that object as the
+    // delta is what put the literal "[object Object]" on the card — `String({...})` on the way to the
+    // wire, then again when the card cached what the stream carried. Unwrap the text here; the model
+    // name is provenance the REST layer stamps on the row after the run, not something to stream.
+    const text = typeof reply === 'string' ? reply : reply?.text;
+    if (!String(text || '').trim()) {
+      yield runErrorEvent({ code: ERROR_CODES.runFailed, message: 'The model returned an empty summary. Try again, or pick a different model in Settings.' });
       return;
     }
     const messageId = `summary-${ctx.input.runId}`;
