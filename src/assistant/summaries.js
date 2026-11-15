@@ -14,7 +14,7 @@
 
 const crypto = require('node:crypto');
 const { AssistantInputError } = require('./errors');
-const { createChatModel, sanitizeError } = require('./model');
+const { createChatModel, contentText, sanitizeError } = require('./model');
 const { summaryResponse } = require('../routes/portfolio');
 const { cashFlowMonthSummary, shiftMonthKey } = require('../cashflow-summary');
 const { summarySystemPrompt } = require('./prompts');
@@ -155,6 +155,9 @@ function createSummaries({ db, store, complete = null }) {
     const text = String(typeof result === 'object' && result !== null ? result.text : result).trim();
     const model = typeof result === 'object' && result !== null ? result.model : store.rawModelSettings().model;
     if (!text) throw new Error('The model returned an empty summary. Try again, or pick a different model in Settings.');
+    // Last line of defence: an object that reached this point unstringified is a bug in the reply
+    // reader, and caching its default rendering would show the user "[object Object]" forever.
+    if (/^\[object [A-Za-z]+\]$/.test(text)) throw new Error('The model reply could not be read as text. Try again.');
     // Fingerprint is taken *before* the call and stored with the text: if the user saved a row
     // while the model was thinking, the card comes back already marked stale, which is true.
     db.prepare(`INSERT INTO assistant_summaries(placement, period, text, context, fingerprint, model, generated_at) VALUES(?,?,?,?,?,?,?)
@@ -175,13 +178,18 @@ function createSummaries({ db, store, complete = null }) {
   function setComplete(fn) { complete = fn; }
   async function completeSummary(args) {
     if (typeof complete !== 'function') throw new Error('Summary completion is unavailable.');
-    const { client, model, token, baseUrl } = await createChatModel(store, { maxRetries: 0, timeoutMs: 60000, maxTokens: 180 });
+    // No `maxTokens` here on purpose. A reasoning model spends the output budget on
+    // `reasoning_content` before it writes any `content`, so a low cap does not shorten the card:
+    // it truncates the thinking and returns an empty answer with finish_reason "length" (measured
+    // with deepseek-flash: every output token was reasoning, content was ""). The prompt, not a
+    // token cap, is what keeps the card to a few lines.
+    const { client, model, token, baseUrl } = await createChatModel(store, { maxRetries: 0, timeoutMs: 60000 });
     try {
       const reply = await client.invoke([
         { role: 'system', content: String(args.system || '') },
         { role: 'user', content: String(args.userText || '') },
       ], { signal: args.signal });
-      return { text: typeof reply?.content === 'string' ? reply.content : String(reply?.content ?? ''), model };
+      return { text: contentText(reply?.content), model };
     } catch (error) {
       throw new Error(sanitizeError(error, { token, model, baseUrl, timeoutMs: 60000 }));
     }

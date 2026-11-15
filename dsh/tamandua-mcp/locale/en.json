@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Tamandua finance",
+    "description": "Connects the local Tamandua finance app so the agent can read portfolio, net worth and cash-flow records and record prices, dividends and cash-flow entries. Start the app on port 3000 first; writes change the live database, including a destructive delete tool, and prices are snapshots, not live quotes.",
+    "detail": "docs/DETAIL.md"
+  }
+}

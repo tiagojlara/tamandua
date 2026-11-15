@@ -1,3 +1,5 @@
+import { getLanguage } from './i18n.js';
+
 export const currencies = ['EUR', 'SEK', 'USD', 'BRL'];
 export const api = async (path, options = {}) => {
   const response = await fetch(`/api/${path}`, {
@@ -32,12 +34,13 @@ export const stamp = (value, { time = true } = {}) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  const day = date.toLocaleDateString();
-  return time ? `${day} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : day;
+  const locale = getLanguage() === 'pt-BR' ? 'pt-BR' : 'en';
+  const formattedDay = date.toLocaleDateString(locale);
+  return time ? `${formattedDay} ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : formattedDay;
 };
 
 export const money = (value, currency = 'EUR', digits = 0) => value == null ? '—' :
-  new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: digits }).format(value);
+  new Intl.NumberFormat(getLanguage() === 'pt-BR' ? 'pt-BR' : 'en', { style: 'currency', currency, maximumFractionDigits: digits }).format(value);
 export const today = () => new Date().toISOString().slice(0, 10);
 export const escapeCsv = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
 

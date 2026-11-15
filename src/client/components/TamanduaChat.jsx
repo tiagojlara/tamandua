@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CopilotChat, CopilotKitProvider, useAgent, useRenderTool } from '@copilotkit/react-core/v2';
 import '@copilotkit/react-core/v2/styles.css';
 import { useTamandua } from '../tamanduaState.jsx';
+import { stamp } from '../api.js';
 import { historyToMessages, readToolResult } from '../tamanduaMessages.mjs';
 import { TAMANDUA_CODES } from '../tamanduaCodes.mjs';
 
@@ -19,14 +20,77 @@ import { TAMANDUA_CODES } from '../tamanduaCodes.mjs';
 
 const AGENT_ID = 'tamandua';
 
-// The library's composer, labelled in our words. `chatDisclaimerText` is the §9 line the hand-rolled
-// composer used to print under the input, and `welcomeMessageText` is the empty state; both are strings
-// the person reads before anything leaves the machine, so they belong here rather than in a stylesheet.
+// The library's composer strings. The welcome text is kept as a fallback, but the empty conversation is
+// drawn by `EmptyState` below because the library suppresses its own welcome screen once a thread id is
+// supplied. `chatDisclaimerText` carries the keyboard hint under the input.
 const LABELS = {
-  chatInputPlaceholder: 'Ask about your records — Enter sends, Shift+Enter adds a line',
-  welcomeMessageText: 'Read-only answers, from your own records. Tamanduá looks them up through this app’s local tools and quotes what it finds, per currency.',
-  chatDisclaimerText: '',
+  chatInputPlaceholder: 'Ask about your records…',
+  welcomeMessageText: 'Read-only answers, from your own records.',
+  chatDisclaimerText: 'Enter to send · Shift + Enter for a new line',
 };
+
+// The library disables its own welcome screen whenever a thread id is supplied (ours always is), which
+// left a new conversation as a large blank card. This is the replacement: it sits behind the transcript,
+// disappears as soon as the first message exists, and never intercepts a click meant for the composer.
+function EmptyState() {
+  return <div className="tamandua-chat-empty">
+    <span className="tamandua-chat-empty-mark" aria-hidden="true">✦</span>
+    <b>Ask about your own numbers</b>
+    <p>Loan payoffs, cash buffers, or where last month went — answered from the records stored here.</p>
+    <ul>
+      <li>Can I pay off the car loan?</li>
+      <li>What did I spend last month?</li>
+      <li>How is my net worth split?</li>
+    </ul>
+    <small>Read-only answers · sources shown for every reply</small>
+  </div>;
+}
+
+// Past conversations, inside the floating panel.
+//
+// `/assistant` has a permanent conversation sidebar, but the panel had no way back into an older chat:
+// closing it removed the only route to the list. This is the same server data (`tamandua.conversations`)
+// in a compact picker. Empty threads are hidden — they are an artefact of opening the panel and would
+// only push the conversations someone actually wants off screen.
+function HistoryPanel({ conversations, currentId, loading, onSelect, onClose }) {
+  const visible = conversations
+    .filter((conversation) => conversation.messageCount > 0)
+    .sort((left, right) => String(right.lastMessageAt || right.updatedAt).localeCompare(String(left.lastMessageAt || left.updatedAt)));
+  return <section className="tamandua-history" id="tamandua-history" aria-label="Past conversations">
+    <div className="tamandua-history-head">
+      <div className="tamandua-history-title">
+        <b>Past conversations</b>
+        <span>Saved on this device</span>
+      </div>
+      <button type="button" className="tamandua-close" onClick={onClose} aria-label="Close past conversations" autoFocus>×</button>
+    </div>
+    <div className="tamandua-history-body">
+      {loading && !visible.length
+        ? <p className="tamandua-history-note">Loading conversations…</p>
+        : visible.length
+          ? <ul className="tamandua-history-list">
+            {visible.map((conversation) => {
+              const current = String(conversation.id) === currentId;
+              return <li key={conversation.id}>
+                <button type="button" className={`tamandua-history-row${current ? ' selected' : ''}`} onClick={() => onSelect(conversation.id)} aria-current={current ? 'true' : undefined}>
+                  <span className="tamandua-history-row-main">
+                    <span className="tamandua-history-row-title">{conversation.title || 'Untitled conversation'}</span>
+                    <span className="tamandua-history-row-meta">{conversation.messageCount} message{conversation.messageCount === 1 ? '' : 's'} · {stamp(conversation.lastMessageAt || conversation.updatedAt, { time: false })}</span>
+                  </span>
+                  {current ? <span className="tamandua-history-current">Current</span> : <span className="tamandua-history-open" aria-hidden="true">›</span>}
+                </button>
+              </li>;
+            })}
+          </ul>
+          : <div className="tamandua-history-empty">
+            <span className="tamandua-history-empty-mark" aria-hidden="true">↺</span>
+            <b>No past conversations yet.</b>
+            <p>Start a chat and it will be saved here.</p>
+          </div>}
+    </div>
+    <p className="tamandua-history-foot">History is stored on this device only.</p>
+  </section>;
+}
 
 const STATUS_LABELS = { ok: 'read', error: 'failed', refused: 'refused' };
 
@@ -68,14 +132,47 @@ export default function TamanduaChat() {
 
 function TamanduaPanel() {
   const tamandua = useTamandua();
-  const { threadId, rows, historyToken, settings, chatError, open, page, slot } = tamandua;
+  const { threadId, rows, historyToken, settings, chatError, conversations, open, page, slot } = tamandua;
   const panelRef = useRef(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const expanded = page === 'assistant';
   // The same agent instance CopilotChat runs against — `useAgent` reads the registry, not a copy, so
   // `setMessages` here is what the transcript renders from (the view draws `agent.messages` verbatim).
   const { agent, isReady } = useAgent({ agentId: AGENT_ID });
 
   useRenderTool({ name: '*', group: true, render: ToolChip }, []);
+
+  const closeHistory = useCallback(() => {
+    setHistoryOpen(false);
+    panelRef.current?.focus();
+  }, []);
+
+  const showHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try { await tamandua.loadConversations(); } finally { setHistoryLoading(false); }
+  }, [tamandua]);
+
+  const recoverConversation = useCallback(async (id) => {
+    setHistoryOpen(false);
+    await tamandua.openConversation(id);
+    panelRef.current?.focus();
+  }, [tamandua]);
+
+  const startNewChat = useCallback(() => {
+    setHistoryOpen(false);
+    tamandua.startNewChat();
+  }, [tamandua]);
+
+  const closePanel = useCallback(() => {
+    setHistoryOpen(false);
+    tamandua.closePanel();
+  }, [tamandua]);
+
+  // The history picker belongs to the floating panel. Once /assistant takes over, its sidebar is the
+  // history surface and an overlay would just duplicate it.
+  useEffect(() => { if (expanded) setHistoryOpen(false); }, [expanded]);
 
   // The bundle is here; anything the page was showing as "Loading Tamandua…" can stop. Mounted once and
   // kept mounted while the app runs, which is also what keeps the transcript alive across page changes.
@@ -107,13 +204,17 @@ function TamanduaPanel() {
     if (open && !expanded) panelRef.current?.focus();
   }, [open, expanded]);
 
-  // Escape closes the floating panel. On /assistant there is nothing to close.
+  // Escape closes the history picker first, then the floating panel. On /assistant there is nothing to close.
   useEffect(() => {
     if (!open || expanded) return undefined;
-    const onKey = (event) => { if (event.key === 'Escape') tamandua.closePanel(); };
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return;
+      if (historyOpen) { closeHistory(); return; }
+      tamandua.closePanel();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, expanded, tamandua]);
+  }, [open, expanded, historyOpen, closeHistory, tamandua]);
 
   // The typed codes the server yields (`src/assistant/errors.js`), not a regex over the message: FR-9 wants
   // a failure to say what to do, and "open Settings" is a different action from "read the disclosure".
@@ -150,13 +251,32 @@ function TamanduaPanel() {
   if (!open && !expanded) return null;
 
   const ready = Boolean(settings?.ready);
+  // `useAgent` re-renders on message changes, so this stays honest while a run streams: the empty state
+  // vanishes the moment the question is accepted, rather than waiting for the persisted rows to come back.
+  const hasMessages = Boolean(agent?.messages?.length);
   const body = <>
     {!expanded && <div className="tamandua-panel-head">
-      <div className="tamandua-panel-title"><b>Ask Tamanduá</b><span>Portfolio answers grounded in your records</span></div>
-      <span className="tamandua-panel-actions">
-        <button type="button" className="table-action" onClick={() => tamandua.startNewChat()}>New chat</button>
-        <button type="button" className="icon-button" onClick={tamandua.closePanel} aria-label="Close Ask Tamanduá">×</button>
-      </span>
+      <div className="tamandua-panel-title">
+        <span className="tamandua-panel-mark" aria-hidden="true">✦</span>
+        <span className="tamandua-panel-copy">
+          <b>Ask Tamanduá</b>
+          <span>Grounded in your records</span>
+        </span>
+      </div>
+      <div className="tamandua-panel-actions">
+        <button type="button" className="tamandua-history-toggle" onClick={() => (historyOpen ? closeHistory() : showHistory())}
+          aria-expanded={historyOpen} aria-controls="tamandua-history" title="Past conversations" aria-label="Past conversations">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 4.3v3.8l2.2 1.35" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M12.9 8A4.9 4.9 0 1 1 9.6 3.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <span className="tamandua-history-label">History</span>
+        </button>
+        <button type="button" className="tamandua-new-chat" onClick={startNewChat} title="Start a new conversation" aria-label="New chat">
+          <span aria-hidden="true">＋</span><span className="tamandua-new-chat-label">New chat</span>
+        </button>
+        <button type="button" className="tamandua-close" onClick={closePanel} aria-label="Close Ask Tamanduá">×</button>
+      </div>
     </div>}
     {!ready && settings && <p className="tamandua-gate">
       No model endpoint is configured, so Tamanduá answers nothing — a guessed number is worse than none.
@@ -164,6 +284,9 @@ function TamanduaPanel() {
     </p>}
     {chatError && <p className="form-error chat-error" role="alert">{chatError}</p>}
     <div className="tamandua-chat">
+      {historyOpen && <HistoryPanel conversations={conversations} currentId={threadId ? String(threadId) : ''}
+        loading={historyLoading} onSelect={recoverConversation} onClose={closeHistory}/>}
+      {!hasMessages && <EmptyState/>}
       <CopilotChat
         agentId={AGENT_ID}
         // `threadId === String(conversation.id)` (§B). Never null: the provider creates the conversation

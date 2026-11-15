@@ -1,0 +1,22 @@
+{
+  "name": "@local/tamandua-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Connects the local Tamandua finance app's MCP endpoint to the Harness.",
+  "type": "module",
+  "exports": {
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+- insert:
+    - id: tamandua-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: tamandua
+        transport: streamable-http
+        url: http://127.0.0.1:3000/mcp
+        # The Tamandua API server is started by hand, so a missing app must not
+        # reject activation; the client reconnects once the app is up.
+        failOnStartupError: false
+        startupTimeoutMs: 10000

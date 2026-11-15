@@ -26,7 +26,7 @@ const MONTH = new Date().toISOString().slice(0, 7);
 // Authorization header against a local endpoint (localhost HTTP is allowed by
 // the endpoint policy), while staying able to assert what actually went out.
 // ---------------------------------------------------------------------------
-async function startFakeModel({ toolCalls = [], answer = 'You have 2 accounts.' } = {}) {
+async function startFakeModel({ toolCalls = [], answer = 'You have 2 accounts.', answerContent = null } = {}) {
   const calls = [];
   let turn = 0;
   const server = http.createServer((req, res) => {
@@ -58,7 +58,7 @@ async function startFakeModel({ toolCalls = [], answer = 'You have 2 accounts.' 
 
       if (plain) {
         res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ id: 'x', object: 'chat.completion', created: 0, model: payload.model, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: answer } }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }));
+        return res.end(JSON.stringify({ id: 'x', object: 'chat.completion', created: 0, model: payload.model, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: answerContent ?? answer } }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }));
       }
       res.setHeader('content-type', 'text/event-stream');
       for (const part of [answer.slice(0, Math.ceil(answer.length / 2)), answer.slice(Math.ceil(answer.length / 2))]) {
@@ -161,9 +161,9 @@ function foldAgui(events) {
 
 // Boots the real app (its own /mcp endpoint included) against a throwaway database,
 // plus a fake model endpoint. Same harness shape as api.test.js and cashflow.test.js.
-async function startAssistant({ toolCalls, answer } = {}) {
+async function startAssistant({ toolCalls, answer, answerContent } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tamandua-assistant-test-'));
-  const model = await startFakeModel({ toolCalls, answer });
+  const model = await startFakeModel({ toolCalls, answer, answerContent });
   let server;
   const { app, db } = createApp({
     dataDir,
@@ -752,6 +752,11 @@ test('summaries are generated on demand, cached, and marked stale when the data 
   assert.match(snapshot, /3200/, 'the card is built from the app\'s own aggregation');
   assert.match(snapshot, /currencies_not_converted/);
   assert.equal(snapshot.includes(TOKEN), false);
+  // Reasoning models spend the output budget on reasoning_content before writing content, so a
+  // max_tokens cap leaves content empty with finish_reason "length". The summary call must not
+  // cap output; the prompt is what keeps the card short.
+  assert.equal('max_tokens' in model.calls[0].body, false, 'a summary request must not cap a reasoning model\'s output');
+  assert.equal('max_completion_tokens' in model.calls[0].body, false);
 
   const cached = await request(`assistant/summaries?placement=cashflow&period=${MONTH}`);
   assert.equal(cached.payload.cached.text, generated.payload.cached.text);
@@ -771,7 +776,9 @@ test('summaries are generated on demand, cached, and marked stale when the data 
   const overview = await request('assistant/summaries', { method: 'POST', body: { placement: 'overview' } });
   assert.equal(overview.status, 200);
   assert.match(overview.payload.cached.text, /Income of/);
-  assert.equal((await request('assistant/summaries', { method: 'POST', body: { placement: 'nonsense' } })).status, 502);
+  // An unknown placement is something the caller can fix in the request, so it is a 400 input
+  // error (see AssistantInputError), not a gateway failure.
+  assert.equal((await request('assistant/summaries', { method: 'POST', body: { placement: 'nonsense' } })).status, 400);
   assert.equal((await request('assistant/summaries?placement=cashflow')).status, 400, 'a cash-flow card needs a month');
 
   await request('assistant/summaries', { method: 'DELETE' });
@@ -842,6 +849,22 @@ test('summary indicators are computed by the app so the card never has to do ari
   assert.equal(flow.indicators.pace.EUR.days_in_month, new Date(Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5, 7)), 0)).getUTCDate());
 });
 
+// Some OpenAI-compatible providers answer with content blocks (`[{type:"text", text:"..."}]`)
+// instead of a plain string. Reading that with String() renders the default object form, which is
+// exactly the "[object Object]" a card was showing after a successful generate.
+test('a summary reply made of content blocks is cached as its text, not as an object', async (t) => {
+  const lines = 'LEAD: Two thirds of your EUR sits in one fund.\nWATCH: One price is two months old.';
+  const { request, configure, db, close } = await startAssistant({ answerContent: [{ type: 'text', text: lines }] });
+  t.after(close);
+  await configure();
+
+  const generated = await request('assistant/summaries', { method: 'POST', body: { placement: 'overview' } });
+  assert.equal(generated.status, 200, JSON.stringify(generated.payload));
+  assert.equal(generated.payload.cached.text, lines);
+  assert.equal(db.prepare('SELECT text FROM assistant_summaries').get().text, lines, 'the row holds the answer, not "[object Object]"');
+  assert.doesNotMatch(generated.payload.cached.text, /\[object Object\]/);
+});
+
 // The prompt is the difference between a card that reads the chart back and one that comments on
 // it, so its contract is asserted rather than trusted.
 test('the summary prompt asks for a labelled reading, not a recitation of the totals', async (t) => {
@@ -867,6 +890,9 @@ test('a summary failure is reported as an actionable message, not a broken card'
   const failure = await startFailingModel(503, 'upstream busy');
   t.after(failure.close);
   await request('assistant/model', { method: 'PUT', body: { baseUrl: failure.baseUrl, model: 'm', token: 'x' } });
+  // Summaries run inside the same runtime as the chat, so the §9 disclosure gate applies to them
+  // too: without accepting it the card is refused with 428 before the model is ever called.
+  await request('assistant/disclosure', { method: 'POST' });
 
   const result = await request('assistant/summaries', { method: 'POST', body: { placement: 'overview' } });
   assert.equal(result.status, 502);
