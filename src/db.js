@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { backfillFxPairs } = require('./market-data/fxPairs');
 
 const TABLE_FIELDS = {
   accounts: ['name', 'currency'],
@@ -131,6 +132,9 @@ function openDatabase(dataDir) {
   }
   db.exec("UPDATE assets SET marketstack_symbol=price_symbol WHERE marketstack_symbol='' AND price_symbol!=''");
   if (!hasColumn(db, 'fx_rates', 'source')) db.exec("ALTER TABLE fx_rates ADD COLUMN source TEXT NOT NULL DEFAULT 'Manual'");
+  // Existing databases predate all-pairs storage: derive the missing crosses from the EUR rows already
+  // there and give legacy Manual rows their inverse, so the first page load is not missing USD→SEK.
+  backfillFxPairs(db);
   // CREATE TABLE IF NOT EXISTS above already brings the cash-flow tables into older databases.
   unifyCashFlowAccounts(db);
   seedCashFlowCategories(db);

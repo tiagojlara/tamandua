@@ -1,7 +1,9 @@
+const { SUPPORTED_FX } = require('./fxPairs');
+
 async function fetchFxRates({ provider = 'frankfurter', from, to }) {
   const url = new URL('https://api.frankfurter.dev/v2/rates');
   url.searchParams.set('base', 'EUR');
-  url.searchParams.set('quotes', 'SEK,USD,BRL');
+  url.searchParams.set('quotes', SUPPORTED_FX.filter((currency) => currency !== 'EUR').join(','));
   url.searchParams.set('from', from);
   url.searchParams.set('to', to);
   if (provider === 'ecb') url.searchParams.set('providers', 'ecb');

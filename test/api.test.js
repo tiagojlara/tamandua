@@ -131,33 +131,83 @@ test('physical assets, valuations, and linked loan balance history are backed up
   assert.equal(backup.payload.data.liability_balances.length, 1);
 });
 
-test('FX sync refreshes provider rates on re-sync but never overwrites Manual rows', async (t) => {
+test('FX sync stores both directions and never overwrites a Manual row', async (t) => {
   let rates = [{ date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.1 }];
+  const { request, close } = await startServer({ fetchFxRates: async () => rates.map((row) => ({ ...row })) });
+  t.after(close);
+  const { accountId, assetId } = await seedAccountAndAsset(request);
+  await request('transactions', { method: 'POST', body: { account_id: accountId, asset_id: assetId, kind: 'buy', date: '2024-01-02', quantity: 10, unit_price: 10, currency: 'EUR' } });
+  const eurUsd = (rows) => rows.find((row) => row.base === 'EUR' && row.quote === 'USD');
+  const usdEur = (rows) => rows.find((row) => row.base === 'USD' && row.quote === 'EUR');
+
+  assert.equal((await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } })).status, 200);
+  let stored = (await request('fx_rates')).payload;
+  assert.equal(stored.length, 2, 'the inverse pair is stored too');
+  assert.equal(eurUsd(stored).rate, 1.1);
+  assert.ok(Math.abs(usdEur(stored).rate - 1 / 1.1) < 1e-12);
+
+  // Provider revises the rate; a second sync must apply it to both directions.
+  rates = [{ date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.2 }];
+  const resync = await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } });
+  assert.equal(resync.status, 200);
+  assert.equal(resync.payload.stored, 2);
+  stored = (await request('fx_rates')).payload;
+  assert.equal(eurUsd(stored).rate, 1.2, 'revised provider rate is refreshed');
+  assert.ok(Math.abs(usdEur(stored).rate - 1 / 1.2) < 1e-12);
+
+  // A row flipped to Manual is sacred; only the inverse provider row may refresh.
+  await request(`fx_rates/${eurUsd(stored).id}`, { method: 'PUT', body: { source: 'Manual', rate: 9.9 } });
+  rates = [{ date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.3 }];
+  const thirdSync = await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } });
+  assert.equal(thirdSync.payload.stored, 1, 'manual rates are never overwritten');
+  const afterManual = (await request('fx_rates')).payload;
+  assert.equal(eurUsd(afterManual).rate, 9.9);
+  assert.ok(Math.abs(usdEur(afterManual).rate - 1 / 1.3) < 1e-12);
+});
+
+test('FX sync stores every supported pair', async (t) => {
+  const rates = [
+    { date: '2024-01-03', base: 'EUR', quote: 'SEK', rate: 11 },
+    { date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.1 },
+    { date: '2024-01-03', base: 'EUR', quote: 'BRL', rate: 5.5 },
+  ];
   const { request, close } = await startServer({ fetchFxRates: async () => rates.map((row) => ({ ...row })) });
   t.after(close);
   const { accountId, assetId } = await seedAccountAndAsset(request);
   await request('transactions', { method: 'POST', body: { account_id: accountId, asset_id: assetId, kind: 'buy', date: '2024-01-02', quantity: 10, unit_price: 10, currency: 'EUR' } });
 
   assert.equal((await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } })).status, 200);
-  let stored = (await request('fx_rates')).payload;
-  assert.equal(stored.length, 1);
-  assert.equal(stored[0].rate, 1.1);
+  const stored = (await request('fx_rates')).payload;
+  assert.equal(stored.length, 12, 'four currencies produce twelve directed pairs');
+  assert.ok(!stored.some((row) => row.base === row.quote));
+  const usdSek = stored.find((row) => row.base === 'USD' && row.quote === 'SEK');
+  const sekUsd = stored.find((row) => row.base === 'SEK' && row.quote === 'USD');
+  assert.ok(usdSek && sekUsd, 'USD and SEK are stored in both directions');
+  assert.ok(Math.abs(usdSek.rate - 11 / 1.1) < 1e-12);
+  assert.ok(Math.abs(sekUsd.rate - 1.1 / 11) < 1e-12);
+});
 
-  // Provider revises the rate; a second sync must apply it (previously it was skipped).
-  rates = [{ date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.2 }];
-  const resync = await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } });
-  assert.equal(resync.status, 200);
-  assert.equal(resync.payload.stored, 1);
-  stored = (await request('fx_rates')).payload;
-  assert.equal(stored[0].rate, 1.2, 'revised provider rate is refreshed');
+test('manual FX rates upsert in both directions', async (t) => {
+  const { request, close } = await startServer();
+  t.after(close);
+  const first = await request('fx_rates', { method: 'POST', body: { date: '2024-02-01', base: 'USD', quote: 'SEK', rate: 10.5, source: 'Manual' } });
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.rate, 10.5);
+  assert.equal(first.payload.source, 'Manual');
+  let rows = (await request('fx_rates')).payload;
+  const inverse = rows.find((row) => row.base === 'SEK' && row.quote === 'USD');
+  assert.ok(inverse, 'the inverse is saved as Manual too');
+  assert.ok(Math.abs(inverse.rate - 1 / 10.5) < 1e-12);
 
-  // A row flipped to Manual is sacred.
-  await request(`fx_rates/${stored[0].id}`, { method: 'PUT', body: { source: 'Manual', rate: 9.9 } });
-  rates = [{ date: '2024-01-03', base: 'EUR', quote: 'USD', rate: 1.3 }];
-  const thirdSync = await request('fx/sync', { method: 'POST', body: { provider: 'frankfurter' } });
-  assert.equal(thirdSync.payload.stored, 0, 'manual rates are never overwritten');
-  const afterManual = (await request('fx_rates')).payload;
-  assert.equal(afterManual[0].rate, 9.9);
+  const second = await request('fx_rates', { method: 'POST', body: { date: '2024-02-01', base: 'USD', quote: 'SEK', rate: 10.6, source: 'Manual' } });
+  assert.equal(second.status, 200);
+  assert.equal(second.payload.id, first.payload.id, 'the same pair updates in place');
+  rows = (await request('fx_rates')).payload;
+  assert.equal(rows.filter((row) => row.date === '2024-02-01').length, 2);
+  assert.ok(Math.abs(rows.find((row) => row.base === 'SEK' && row.quote === 'USD').rate - 1 / 10.6) < 1e-12);
+
+  const invalid = await request('fx_rates', { method: 'POST', body: { date: '2024-02-01', base: 'USD', quote: 'USD', rate: 1 } });
+  assert.equal(invalid.status, 400);
 });
 
 test('Alpha Vantage quota counters survive a stale client settings round-trip', async (t) => {

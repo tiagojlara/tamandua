@@ -2,6 +2,7 @@ const express = require('express');
 const calc = require('../calculations');
 const { TABLE_FIELDS, TABLE_ORDER, CHILD_FIRST, seedCashFlowCategories } = require('../db');
 const { fetchFxRates } = require('../market-data/frankfurter');
+const { expandFxRates, validateManualFxRate, saveManualFxRate } = require('../market-data/fxPairs');
 
 const ALLOWED_TABLES = new Set(TABLE_ORDER);
 
@@ -160,6 +161,20 @@ function createPortfolioRouter({ db, fetchFxRates: fetchFx = fetchFxRates } = {}
     const fields = TABLE_FIELDS[table];
     if (!fields) return res.sendStatus(404);
     const data = req.body || {};
+
+    if (table === 'fx_rates') {
+      const error = validateManualFxRate(data);
+      if (error) return res.status(400).json({ error });
+      try {
+        // Manual entries are upserts, not plain inserts: a provider row may already exist for the
+        // same date and pair, and the person's rate must replace it (and its inverse) rather than
+        // failing on the UNIQUE(date,base,quote) constraint.
+        res.json(saveManualFxRate(db, data));
+      } catch (e) {
+        res.status(400).json({ error: e.message });
+      }
+      return;
+    }
 
     if (table === 'transactions') {
       if (!['buy', 'sell', 'deposit', 'withdrawal', 'fee'].includes(data.kind)) {
@@ -369,19 +384,21 @@ function createPortfolioRouter({ db, fetchFxRates: fetchFx = fetchFxRates } = {}
     try {
       const rows = await fetchFx({ provider, from, to });
       const source = provider === 'ecb' ? 'Frankfurter · ECB' : 'Frankfurter';
-      // Refresh provider rows on every sync, even from the same provider (rates get revised);
-      // never overwrite a Manual entry for the same date/pair.
+      // Frankfurter answers with EUR as the base. Expand that into every directed pair before storing,
+      // so "USD → SEK" is a dated row the UI, the assistant and the backup can all read directly.
+      const pairs = expandFxRates(rows);
+      // Refresh provider rows on every sync, even from the same provider (rates get revised).
+      // Manual rows are decisions, and rows imported from a broker are evidence of a real trade;
+      // neither may be replaced by a different provider's cross-rate.
       const upsert = db.prepare(`INSERT INTO fx_rates(date,base,quote,rate,source) VALUES(@date,@base,@quote,@rate,@source)
-        ON CONFLICT(date,base,quote) DO UPDATE SET rate=excluded.rate, source=excluded.source WHERE fx_rates.source != 'Manual'`);
+        ON CONFLICT(date,base,quote) DO UPDATE SET rate=excluded.rate, source=excluded.source
+        WHERE fx_rates.source IN ('Frankfurter', 'Frankfurter · ECB')`);
       const save = db.transaction((data) => {
         let stored = 0;
-        for (const row of data) {
-          if (row.base !== 'EUR' || !['SEK', 'USD', 'BRL'].includes(row.quote) || !(Number(row.rate) > 0)) continue;
-          stored += upsert.run({ ...row, source }).changes;
-        }
+        for (const row of data) stored += upsert.run({ ...row, source }).changes;
         return stored;
       });
-      const stored = save(rows);
+      const stored = save(pairs);
       res.json({ ok: true, stored, dates: new Set(rows.map((row) => row.date)).size, from, to, source });
     } catch (error) {
       res.status(error.status || 502).json({ error: error.publicMessage || `Could not fetch historical FX rates: ${error.message}` });
