@@ -472,7 +472,7 @@ test('createPolicyHooks reads the route, not the request body', async () => {
     (response) => { assert.equal(response.status, 428); return true; },
     'a suggestion run reads records too',
   );
-  assert.deepEqual([...RECORD_AGENTS].sort(), ['tamandua', 'summary'], 'a new record-reading agent must be added to the gated set');
+  assert.deepEqual([...RECORD_AGENTS].sort(), ['summary', 'tamandua'], 'a new record-reading agent must be added to the gated set');
   assert.throws(() => createPolicyHooks({ disclosure }), /store/, 'a gate that cannot read the acknowledgement refuses to be built');
 });
 

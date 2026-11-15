@@ -4,26 +4,73 @@ import {
 } from 'recharts';
 import { money } from '../api.js';
 
-const palette = ['#2f6e5b', '#e0a06a', '#89a895', '#899aa4', '#c57660', '#aab67a', '#8a72a6'];
+export const chartPalette = ['#2f6e5b', '#e0a06a', '#89a895', '#899aa4', '#c57660', '#aab67a', '#8a72a6'];
+// "Oct ’26" rather than "Oct 26": a bare two-digit year reads as a day of the month, which is how a
+// one-year window ends up labelled with the same tick five times.
 const shortDate = (date) => {
   const value = new Date(`${/^\d{4}-\d{2}$/.test(date) ? `${date}-01` : date}T12:00:00`);
-  return Number.isNaN(value.getTime()) ? date : new Intl.DateTimeFormat(undefined, { month: 'short', year: '2-digit' }).format(value);
+  if (Number.isNaN(value.getTime())) return date;
+  const month = new Intl.DateTimeFormat(undefined, { month: 'short' }).format(value);
+  const year = new Intl.DateTimeFormat(undefined, { year: '2-digit' }).format(value);
+  return `${month} ’${year}`;
+};
+const dateValue = (date) => new Date(`${date}T12:00:00`);
+const dayMonth = (date) => {
+  const value = dateValue(date);
+  return Number.isNaN(value.getTime()) ? date : new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(value);
+};
+const fullDate = (date) => {
+  const value = dateValue(date);
+  return Number.isNaN(value.getTime()) ? date : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(value);
+};
+// A window under two months is read in days ("7 Oct"); anything longer needs the year to stay unique.
+const windowDays = (data) => {
+  const first = data[0]?.date; const last = data.at(-1)?.date;
+  if (!first || !last) return 0;
+  return Math.round((dateValue(last) - dateValue(first)) / 86400000);
 };
 const axisStyle = { fill: '#8b9991', fontSize: 10 };
 const tooltipStyle = { border: '1px solid #e7ebe6', borderRadius: 8, fontSize: 11 };
 
-export function PortfolioValueChart({ data = [], currency = 'EUR' }) {
+function PortfolioTooltip({ active, payload, label, currency }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload || {};
+  return <div style={{ ...tooltipStyle, background: '#fff', padding: '9px 11px', minWidth: 150, boxShadow: '0 6px 18px #20312d14' }}>
+    <div style={{ color: '#71807a', marginBottom: 4 }}>{fullDate(label)}</div>
+    <div style={{ fontWeight: 700, fontSize: 13 }}>{money(Number(payload[0].value), currency)}</div>
+    {point.estimated && <div style={{ marginTop: 4, color: '#9a7b4f' }}>Includes positions valued at purchase price</div>}
+    {point.complete === false && <div style={{ marginTop: 4, color: '#a65e51' }}>A price or exchange rate is missing for this date</div>}
+  </div>;
+}
+
+export function PortfolioValueChart({ data = [], currency = 'EUR', height = 300 }) {
   if (data.length < 2) return <div className="empty-chart">Add dated prices and exchange rates to see portfolio history.</div>;
-  return <div className="chart-frame"><ResponsiveContainer width="100%" height={280}>
+  const tickFormatter = windowDays(data) <= 62 ? dayMonth : shortDate;
+  return <div className="chart-frame" style={{ height }}><ResponsiveContainer width="100%" height={height}>
     <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
       <defs><linearGradient id="portfolioFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2f6e5b" stopOpacity={0.22}/><stop offset="100%" stopColor="#2f6e5b" stopOpacity={0.01}/></linearGradient></defs>
       <CartesianGrid stroke="#edf0ec" strokeDasharray="3 4" vertical={false}/>
-      <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={28} tick={axisStyle} axisLine={false} tickLine={false}/>
+      <XAxis dataKey="date" tickFormatter={tickFormatter} minTickGap={30} tick={axisStyle} axisLine={false} tickLine={false}/>
       <YAxis tickFormatter={(value) => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)} width={52} tick={axisStyle} axisLine={false} tickLine={false}/>
-      <Tooltip labelFormatter={(date) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(`${date}T12:00:00`))} formatter={(value) => [money(Number(value), currency), 'Portfolio value']} contentStyle={tooltipStyle}/>
-      <Area type="monotone" dataKey="value" stroke="#2f6e5b" strokeWidth={2.5} fill="url(#portfolioFill)" activeDot={{ r: 5, strokeWidth: 0 }}/>
+      <Tooltip content={<PortfolioTooltip currency={currency}/>} contentStyle={tooltipStyle}/>
+      <Area type="monotone" dataKey="value" isAnimationActive={false} stroke="#2f6e5b" strokeWidth={2.5} fill="url(#portfolioFill)" activeDot={{ r: 5, strokeWidth: 0 }}/>
     </AreaChart>
   </ResponsiveContainer></div>;
+}
+
+// Donut with its total in the middle. The rows are rendered by the caller, which has the original
+// currency amounts and the shares; this component only draws the ring.
+export function Donut({ rows = [], currency = 'EUR', total, empty = 'Add assets and prices to see allocation.' }) {
+  const sum = rows.reduce((carry, row) => carry + Math.max(0, row.value), 0);
+  if (!sum) return <div className="empty-chart">{empty}</div>;
+  return <div className="mix-donut">
+    <ResponsiveContainer width="100%" height={170}>
+      <PieChart><Pie data={rows} dataKey="value" nameKey="name" isAnimationActive={false} innerRadius="64%" outerRadius="90%" paddingAngle={2} stroke="#fff" strokeWidth={2}>
+        {rows.map((row, index) => <Cell key={row.name} fill={chartPalette[index % chartPalette.length]}/>)}
+      </Pie><Tooltip formatter={(value, name) => [money(Number(value), currency), name]} contentStyle={tooltipStyle}/></PieChart>
+    </ResponsiveContainer>
+    <div className="mix-donut-center"><small>PORTFOLIO</small><b>{money(total ?? sum, currency)}</b></div>
+  </div>;
 }
 
 // Hover card for the stacked income chart: lists only the assets that actually paid
@@ -67,7 +114,7 @@ export function DividendChart({ data = [], series = [], currency = 'EUR' }) {
       {visible.length > 1 && <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }}/>}
       {segments.map((segment, index) => (paid(segment) ? (
         <Bar key={segment.key} dataKey={segment.key} name={segment.name} stackId="income"
-          fill={palette[index % palette.length]} maxBarSize={36}
+          fill={chartPalette[index % chartPalette.length]} maxBarSize={36}
           radius={segment === top ? [4, 4, 0, 0] : undefined}/>
       ) : null))}
     </BarChart>
@@ -100,7 +147,7 @@ export function ScenarioChart({ lines, currency = 'EUR', retirementYear, startAg
       <Tooltip labelFormatter={(year) => startAge == null ? `${year} years` : `Age ${startAge + Number(year)}`} formatter={(value, name) => [money(Number(value), currency), name]} contentStyle={tooltipStyle}/>
       <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }}/>
       {retirementYear != null && <ReferenceLine x={retirementYear} stroke="#91a99a" strokeDasharray="4 4" label={{ value: 'Retirement', fill: '#718078', fontSize: 10, position: 'insideTopRight' }}/>}
-      {lines.map((line, index) => <Line key={line.label} type="monotone" dataKey={line.label} stroke={palette[index % palette.length]} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }}/>) }
+      {lines.map((line, index) => <Line key={line.label} type="monotone" dataKey={line.label} stroke={chartPalette[index % chartPalette.length]} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }}/>) }
     </LineChart>
   </ResponsiveContainer></div>;
 }
@@ -110,8 +157,8 @@ export function AllocationBar({ entries = [] }) {
   if (!total) return <div className="empty-chart">Add assets and prices to see allocation.</div>;
   const data = entries.filter(([, value]) => value > 0).map(([name, value]) => ({ name, value }));
   return <div className="allocation-chart"><div className="allocation-donut"><ResponsiveContainer width="100%" height={190}>
-    <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="#fff" strokeWidth={2}>{data.map((item, index) => <Cell key={item.name} fill={palette[index % palette.length]}/>)}</Pie><Tooltip formatter={(value, name) => [`${money(Number(value))} · ${Math.round(Number(value) / total * 100)}%`, name]} contentStyle={tooltipStyle}/></PieChart>
-  </ResponsiveContainer></div><div className="allocation-legend">{data.map((item, index) => <div className="allocation-row" key={item.name}><span><i style={{ background: palette[index % palette.length] }}/>{item.name}</span><b>{Math.round(item.value / total * 100)}%</b></div>)}</div></div>;
+    <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="#fff" strokeWidth={2}>{data.map((item, index) => <Cell key={item.name} fill={chartPalette[index % chartPalette.length]}/>)}</Pie><Tooltip formatter={(value, name) => [`${money(Number(value))} · ${Math.round(Number(value) / total * 100)}%`, name]} contentStyle={tooltipStyle}/></PieChart>
+  </ResponsiveContainer></div><div className="allocation-legend">{data.map((item, index) => <div className="allocation-row" key={item.name}><span><i style={{ background: chartPalette[index % chartPalette.length] }}/>{item.name}</span><b>{Math.round(item.value / total * 100)}%</b></div>)}</div></div>;
 }
 
 export function FlowCategoryChart({ rows = [], currency = 'EUR', kind = 'expense', selectedCategory = '', onSelectCategory }) {

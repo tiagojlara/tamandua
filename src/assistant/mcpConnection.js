@@ -10,7 +10,6 @@
 // an ephemeral port only knows the number after createApp has run.
 
 const { MultiServerMCPClient } = require('@langchain/mcp-adapters');
-const { bareToolName } = require('./toolMiddleware');
 
 const SERVER_KEY = 'tamandua';
 
@@ -82,18 +81,16 @@ function createMcpConnection({ url, store } = {}) {
         error = connectError.message;
       }
     }
-    const inventory = (loaded || []).map((tool) => ({
-      name: bareToolName(tool.name),
-      description: tool.description || '',
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    // The settings page only needs to know the connection works and how many tools it published;
+    // the names and descriptions stay here. The agent receives them from `activeTools()` directly,
+    // and shipping an inventory to the browser would only invite a second list to keep in sync.
     return {
       url: endpoint,
       enabled,
       connected: Boolean(loaded),
       checkedAt,
       error: enabled ? error : 'The built-in Tamanduá connection is turned off.',
-      tools: inventory,
-      exposed: inventory.length,
+      exposed: loaded ? loaded.length : 0,
     };
   }
 
