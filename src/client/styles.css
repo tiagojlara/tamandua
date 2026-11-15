@@ -399,20 +399,13 @@ kbd{padding:1px 5px;border:1px solid var(--line);border-radius:4px;background:#f
 .assistant-key-source{padding-top:11px;border-top:1px solid var(--line)}
 .assistant-mcp-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 .assistant-mcp-status .button{min-height:32px;padding:7px 11px;font-size:10px}
-.assistant-tool-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;max-height:320px;overflow:auto;padding:2px}
-.assistant-tool{display:flex;align-items:flex-start;gap:8px;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:10px;color:#4b5b52}
-.assistant-tool:hover{background:#f8faf7}
-.assistant-tool input{flex:0 0 auto;margin-top:2px}
-.assistant-tool-name{display:grid;gap:3px;min-width:0}
-.assistant-tool-name code{padding:1px 4px;border-radius:4px;background:#eef4ef;color:#3d5a4d;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px}
-.assistant-tool-desc{color:#93a098;font-size:9px;line-height:1.5;overflow-wrap:anywhere}
 .assistant-disclosure{display:grid;gap:9px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fbfcfa}
 .assistant-disclosure summary{cursor:pointer;color:#4c6b5b;font-size:10px;font-weight:650;list-style:none}
 .assistant-disclosure summary::-webkit-details-marker{display:none}
 .assistant-disclosure summary:before{content:"› ";display:inline-block}
 .assistant-disclosure[open] summary:before{content:"⌄ "}
 .assistant-disclosure .panel-note{font-size:10px;overflow-wrap:anywhere}
-@media(max-width:1050px){.assistant-shell{grid-template-columns:1fr}.assistant-chat{min-height:560px}.assistant-tool-list{grid-template-columns:1fr}}
+@media(max-width:1050px){.assistant-shell{grid-template-columns:1fr}.assistant-chat{min-height:560px}}
 /* Below 760px the sidebar becomes a 61px bottom bar, so the launcher and the panel both have to clear it:
    an icon the bar swallows is an icon that is not "on every page" (FR-11). */
 @media(max-width:760px){.assistant-conversations{max-height:230px}.assistant-chat{min-height:0}.tamandua-launcher{right:14px;bottom:calc(61px + 14px);width:48px;height:48px;font-size:18px}.tamandua-floating{right:8px;left:8px;bottom:calc(61px + 8px);width:auto;height:min(74vh,calc(100vh - 61px - 24px))}}

@@ -11,12 +11,6 @@ function StatusLine({ ok, children }) {
   return <p className={`assistant-result ${ok ? 'assistant-result-ok' : 'assistant-result-bad'}`} role="status">{children}</p>;
 }
 
-function ToolRow({ tool }) {
-  return <div className="assistant-tool">
-    <span className="assistant-tool-name"><code>{tool.name}</code><span className="assistant-tool-desc">{tool.description}</span></span>
-  </div>;
-}
-
 export default function AssistantSettings() {
   const [settings, setSettings] = useState(null);
   const [mcp, setMcp] = useState(null);
@@ -182,10 +176,6 @@ export default function AssistantSettings() {
       <label className="assistant-check"><input type="checkbox" checked={Boolean(mcp?.enabled)} disabled={Boolean(busy)} onChange={(e) => setMcpEnabled(e.target.checked)}/><span>Let the assistant use Tamanduá tools</span></label>
     </div>
     {mcp?.error && <p className="form-error">{mcp.error}</p>}
-    <div className="assistant-tool-list">
-      {(mcp?.tools || []).map((tool) => <ToolRow key={tool.name} tool={tool}/>)}
-      {!mcp?.tools?.length && <p className="panel-note">No tools listed — the connection is off or unreachable, so reconnect to load the inventory.</p>}
-    </div>
 
     <div className="divider"/>
     <h3 className="subheading">What leaves this machine</h3>
