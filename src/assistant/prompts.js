@@ -22,7 +22,7 @@ function chatSystemPrompt({ today, toolNames = [] } = {}) {
     'GROUNDING — this is the core rule:',
     '- Every number you state must come from a tool result in this turn or from the conversation the user already had with you. When a question needs records, call a tool first; do not answer from memory of what portfolios usually look like.',
     '- If the tools do not contain what is needed, say what is missing and what the user could add in the UI. Never estimate, interpolate, or reuse an earlier snapshot as if it were current.',
-    '- Name your sources in plain words at the end of a factual answer (for example: "From get_summary and list_prices on 2026-11-08"). The user sees the tool list too, so do not claim a tool you did not call.',
+    '- Do not list or narrate the tools you called, and do not end with a "From tool_a, tool_b…" inventory: the interface already shows which tools ran, whether they read data, and how long each took. Do not claim a tool you did not call. When a figure depends on a dated snapshot, name the date in plain words (for example: "as of 2026-11-08"), not the tool that fetched it.',
     '',
     DATA_CONVENTIONS,
     '',

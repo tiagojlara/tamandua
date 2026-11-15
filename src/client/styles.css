@@ -153,7 +153,9 @@ button.flow-category-row:hover{background:#f7f8f6}
 .table-action:hover{background:#eef4ef}
 .table-remove{color:#a8624e}
 .table-remove:hover{background:#fbeee9}
-.assistant-chat{display:flex;flex-direction:column;min-height:min(72vh,680px)}
+.assistant-chat{display:flex;flex-direction:column;height:min(74vh,760px);min-height:560px}
+.assistant-chat .tamandua-slot{flex:1;min-height:0}
+.assistant-chat .tamandua-inpage,.assistant-chat .tamandua-chat{height:100%;min-height:0}
 .assistant-status{color:#93a098;font-size:9px;font-weight:650;white-space:nowrap}
 .assistant-ready{color:#378564}
 .assistant-blocked{color:#a8624e}
@@ -187,23 +189,148 @@ button.flow-category-row:hover{background:#f7f8f6}
 .tamandua-launcher:hover{background:#265c4d;transform:translateY(-1px)}
 .tamandua-launcher:focus-visible{outline:2px solid #b2cfbc;outline-offset:3px}
 .tamandua-launcher-dot{position:absolute;top:2px;right:2px;width:11px;height:11px;border:2px solid var(--surface);border-radius:50%;background:var(--orange)}
-.tamandua-panel{display:flex;flex-direction:column;min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 20px 60px #1e322e2a}
-.tamandua-floating{position:fixed;z-index:28;right:24px;bottom:24px;width:min(430px,calc(100vw - 32px));height:min(660px,calc(100vh - 48px))}
+.tamandua-panel{display:flex;flex-direction:column;min-width:0;border:1px solid #dfe7df;border-radius:16px;background:var(--surface);box-shadow:0 26px 70px #1e322e1f,0 2px 8px #1e322e0f;overflow:hidden}
+.tamandua-floating{position:fixed;z-index:28;right:12px;bottom:12px;width:min(440px,calc(100vw - 24px));height:min(680px,calc(100vh - 24px))}
 .tamandua-floating:focus{outline:none}
-.tamandua-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;letter-spacing:-.12px}
-.tamandua-panel-title{display:grid;gap:3px}.tamandua-panel-title span{color:#87958c;font-size:9px;font-weight:450;letter-spacing:0}
-.tamandua-panel-actions{display:flex;align-items:center;gap:4px}
-.tamandua-chat{display:flex;flex:1;flex-direction:column;min-height:0}
-/* Keep CopilotKit's transcript proportional to the compact floating panel. */
-.tamandua-chat [data-copilotkit]{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.55}
-.tamandua-chat svg{max-width:100%;height:auto}
-.tamandua-chat pre{max-width:100%;overflow-x:auto;font-size:12px;line-height:1.45}
-.tamandua-chat :is(p,li){font-size:14px;line-height:1.55}
+.tamandua-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 11px 11px 14px;border-bottom:1px solid #edf1ec;background:#fff}
+.tamandua-panel-title{display:flex;align-items:center;gap:9px;min-width:0}
+.tamandua-panel-mark{display:grid;place-items:center;flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#1f6b4c,#155b3d);color:#fff;font-size:14px;line-height:1;box-shadow:inset 0 1px 0 #ffffff2b,0 2px 6px #155b3d26}
+.tamandua-panel-copy{display:grid;gap:2px;min-width:0}
+.tamandua-panel-copy b{overflow:hidden;color:var(--ink);font-size:12px;font-weight:700;letter-spacing:-.1px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
+.tamandua-panel-copy span{overflow:hidden;color:#8a9990;font-size:9px;font-weight:500;letter-spacing:.05px;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+.tamandua-panel-actions{display:flex;flex:0 0 auto;align-items:center;gap:4px}
+.tamandua-new-chat{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:5px 9px;border:1px solid #dce8df;border-radius:8px;background:#f7faf7;color:#3d6a55;font-size:9.5px;font-weight:700;line-height:1;transition:background .15s,border-color .15s,color .15s}
+.tamandua-new-chat:hover{border-color:#c8dccd;background:#eef6f0;color:#215d45}
+.tamandua-new-chat>span[aria-hidden]{color:#4c8a68;font-size:12px;line-height:1}
+.tamandua-close{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#8a9990;font-size:20px;line-height:1;transition:background .15s,color .15s}
+.tamandua-close:hover{background:#f1f5f1;color:#3d5147}
+.tamandua-history-toggle{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:5px 8px;border:1px solid #e4ebe5;border-radius:8px;background:#fff;color:#5f7267;font-size:9.5px;font-weight:700;line-height:1;transition:background .15s,border-color .15s,color .15s}
+.tamandua-history-toggle:hover{border-color:#ccdcd1;background:#f4f8f4;color:#2f5d49}
+.tamandua-history-toggle[aria-expanded="true"]{border-color:#c8ddcd;background:#edf4ee;color:#28644f}
+.tamandua-history-toggle svg{flex:0 0 auto;width:13px;height:13px}
+.tamandua-chat{position:relative;display:flex;flex:1;flex-direction:column;min-height:0;background:linear-gradient(180deg,#fcfdfb 0,#fff 220px)}
+
+/* CopilotKit ships its own type scale and card chrome. The transcript is brought back to this app's
+   compact, paper-and-green language: 13px prose, small-caps metadata, and no box around a sentence. */
+.tamandua-chat [data-copilotkit]{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.6}
+.tamandua-chat svg{max-width:100%}
+.tamandua-chat pre{max-width:100%;overflow-x:auto;font-size:11px;line-height:1.5}
 .tamandua-chat .mermaid,.tamandua-chat [class*="mermaid"]{width:100%;max-width:100%;overflow-x:auto}
 .tamandua-chat .mermaid svg,.tamandua-chat [class*="mermaid"] svg{display:block;width:100%;min-width:0;height:auto;max-height:300px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.tamandua-chat [data-testid="copilot-message-list"]{width:100%;max-width:640px;margin-inline:auto;gap:0;padding:1px 0 4px}
+.tamandua-chat [data-testid="copilot-scroll-content"]{padding-bottom:112px!important}
+
+/* User turns: a small pale-green speech bubble, not a full-width block. */
+.tamandua-chat [data-testid="copilot-user-message"]{padding-top:18px}
+.tamandua-chat [data-testid="copilot-user-message"]>[class*="prose"]{max-width:88%!important;padding:8px 12px!important;border:1px solid #dce8df!important;border-radius:14px 14px 4px 14px!important;background:#edf3e7!important;color:#2b4237!important;font-size:12.5px!important;line-height:1.55!important;box-shadow:0 1px 2px #20312d08}
+.tamandua-chat [data-testid="copilot-user-message"]>[class*="prose"] p{margin:0}
+.tamandua-chat [data-testid="copilot-user-message"] [data-testid="copilot-user-toolbar"]{height:0;margin:0!important;overflow:hidden;opacity:0}
+.tamandua-chat [data-testid="copilot-user-message"]:hover [data-testid="copilot-user-toolbar"],.tamandua-chat [data-testid="copilot-user-message"]:focus-within [data-testid="copilot-user-toolbar"]{height:auto;margin-top:2px!important;overflow:visible;opacity:.65}
+.tamandua-chat [data-testid="copilot-scroll-to-bottom"]{width:28px!important;height:28px!important;border:1px solid #dfe8e1!important;background:#fff!important;color:#5c7b6c!important;box-shadow:0 4px 12px #20312d14!important}
+.tamandua-chat [data-testid="copilot-scroll-to-bottom"] svg{width:14px;height:14px}
+
+/* Assistant turns: spacing only; the body itself is the library's own renderer. */
+.tamandua-chat [data-testid="copilot-assistant-message"]{padding:16px 0 5px}
+.tamandua-chat [data-testid="copilot-assistant-message"]>[class*="prose"]{max-width:none;color:#2c3d37;font-size:13px;line-height:1.62}
+.tamandua-chat [data-testid="copilot-assistant-message"] :is(p,li){margin:0 0 9px;font-size:13px;line-height:1.62}
+.tamandua-chat [data-testid="copilot-assistant-message"] p:last-child{margin-bottom:0}
+.tamandua-chat [data-testid="copilot-assistant-message"] strong{color:#1f332b;font-weight:650}
+.tamandua-chat [data-testid="copilot-assistant-message"] :is(h1,h2,h3,h4){margin:14px 0 7px;color:var(--ink);font-size:13px;font-weight:700;line-height:1.4;letter-spacing:0}
+.tamandua-chat [data-testid="copilot-assistant-message"] :is(h1,h2,h3,h4):first-child{margin-top:0}
+.tamandua-chat [data-testid="copilot-assistant-message"] :is(ul,ol){margin:7px 0 11px;padding:0;list-style:none}
+.tamandua-chat [data-testid="copilot-assistant-message"] li{position:relative;margin:0 0 7px;padding:0 0 0 14px}
+.tamandua-chat [data-testid="copilot-assistant-message"] ul>li::before{position:absolute;left:3px;top:.68em;width:4px;height:4px;border-radius:50%;background:#b3c7b9;content:""}
+.tamandua-chat [data-testid="copilot-assistant-message"] ol{counter-reset:tamandua-list}
+.tamandua-chat [data-testid="copilot-assistant-message"] ol>li{counter-increment:tamandua-list}
+.tamandua-chat [data-testid="copilot-assistant-message"] ol>li::before{position:absolute;left:0;top:0;color:#8aa294;font-size:10px;font-weight:700;content:counter(tamandua-list) "."}
+.tamandua-chat [data-testid="copilot-assistant-message"] blockquote{margin:10px 0;padding:7px 10px;border-left:2px solid #b7d9c2;border-radius:0 7px 7px 0;background:#f6faf6;color:#4b5f53}
+.tamandua-chat [data-testid="copilot-assistant-message"] :not(pre)>code{padding:1px 4px;border-radius:4px;background:#edf3e7;color:#3d5a4d;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.tamandua-chat [data-testid="copilot-assistant-message"] a{color:#28644f;text-decoration:underline;text-decoration-color:#b9d8c3;text-underline-offset:2px}
+.tamandua-chat [data-testid="copilot-assistant-message"] hr{margin:14px 0;border:0;border-top:1px solid var(--line)}
+.tamandua-chat [data-testid="copilot-assistant-message"] table{width:100%;font-size:11px}
+.tamandua-chat [data-testid="copilot-assistant-message"] :is(th,td){padding:6px 7px;border-color:#edf1ec}
+
+/* FR-8 evidence: one quiet row for a run, expandable into the individual reads. */
+.tamandua-chat [data-testid="copilot-tool-call-group"]{margin:10px 0 2px;overflow:hidden;border:1px solid #e4ece5;border-radius:10px;background:#f8fbf8}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button{gap:7px;padding:8px 10px;font-size:10.5px;color:#53685b}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button:hover{background:#f1f7f2}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button>svg:first-child{width:18px;height:18px;padding:3px;border-radius:50%;background:#e5f1e7;color:#2f7a58}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button>span:nth-of-type(1){color:#2f5142;font-size:10.5px;font-weight:700}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button>span:nth-of-type(2){margin-left:1px;color:#94a199;font-size:9.5px}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button>span:last-of-type{color:#8a9990;font-size:9px}
+.tamandua-chat [data-testid="copilot-tool-call-group"]>button>span:last-of-type>span{padding:2px 7px;border-radius:20px;background:#eaf3ec;color:#347a59;font-weight:700;letter-spacing:.2px}
+.tamandua-chat [data-testid="copilot-tool-call-group"][data-state="error"]>button>span:last-of-type>span{background:#fbeee9;color:#a3503a}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;padding:6px 10px;border:0;border-top:1px solid #edf2ed;border-radius:0;background:transparent;color:#6f7d75;font-size:9px}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool:first-child{border-top-color:#e4ece5}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool code{padding:0;background:transparent;color:#315444;font-size:9.5px;font-weight:600}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tag{padding:1px 5px;background:#eaf3ec;color:#4b7a62;font-size:8px}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tag-warn{background:#fbf1e6;color:#9a6b3f}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tag-bad{background:#fbeee9;color:#a3503a}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tool-ms{font-size:8.5px;color:#9aa69f}
+.tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tool-args{display:none}
+
+/* Composer: one tight card, text on the left and one green send target on the right. */
+.tamandua-chat [data-testid="copilot-input-overlay"]{padding-top:8px;background:linear-gradient(180deg,#ffffff00 0,#fcfdfb 30%,#fcfdfb 100%)}
+.tamandua-chat [data-testid="copilot-input-overlay"]>div>div:first-child{padding-inline:14px}
+.tamandua-chat [data-testid="copilot-input-overlay"]>div>div:last-child{padding:4px 4px 7px;font-size:8.5px;line-height:1.4;color:#9aa69f}
+.tamandua-chat [data-testid="copilot-chat-input"]{width:100%;max-width:640px;margin-inline:auto;border:1px solid #dfe8e1;border-radius:14px;background:#fff;box-shadow:0 3px 12px #20312d0a,0 1px 2px #20312d0d;transition:border-color .15s,box-shadow .15s}
+.tamandua-chat [data-testid="copilot-chat-input"]:focus-within{border-color:#8fb79c;box-shadow:0 0 0 3px #dcebe0,0 4px 14px #20312d0d}
+.tamandua-chat [data-testid="copilot-chat-input"]>div{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto;align-items:end;gap:8px;padding:6px 6px 6px 10px}
+.tamandua-chat [data-testid="copilot-chat-input"]>div>div:has([data-testid="copilot-add-menu-button"]:disabled){display:none}
+.tamandua-chat [data-testid="copilot-chat-input"]>div>div:nth-child(2){grid-column:1;grid-row:1}
+.tamandua-chat [data-testid="copilot-chat-input"]>div>div:nth-child(3){grid-column:2;grid-row:1;align-self:end}
+.tamandua-chat [data-testid="copilot-chat-textarea"]{min-height:36px!important;padding:7px 4px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;outline:none!important;color:var(--ink)!important;font-size:12.5px!important;line-height:1.55!important;resize:none!important}
+.tamandua-chat [data-testid="copilot-chat-textarea"]::placeholder{color:#98a49c}
+.tamandua-chat [data-testid="copilot-send-button"]{width:32px;height:32px;min-height:32px;padding:0;border:0;border-radius:9px;background:var(--green);color:#fff;box-shadow:0 2px 5px #155b3d26}
+.tamandua-chat [data-testid="copilot-send-button"]:hover:not(:disabled){background:#265c4d}
+.tamandua-chat [data-testid="copilot-send-button"]:disabled{background:#edf1ed;color:#a2ada6;box-shadow:none}
+.tamandua-chat [data-testid="copilot-send-button"] svg{width:16px;height:16px}
+.tamandua-chat [data-testid="copilot-add-menu-button"]{width:32px;height:32px;color:#8a9990}
+/* The floating panel has no room for the raw tool list; expanding the row still names each one. */
+.tamandua-floating [data-testid="copilot-tool-call-group"]>button>span:nth-of-type(2){display:none}
+
+/* The empty conversation: a quiet branded card instead of a blank white field. */
+.tamandua-chat-empty{position:absolute;inset:0 0 112px;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:24px 28px;text-align:center;pointer-events:none}
+.tamandua-chat-empty-mark{display:grid;place-items:center;width:42px;height:42px;margin-bottom:2px;border:1px solid #dbe8dd;border-radius:13px;background:linear-gradient(145deg,#f2f8f2,#fff);color:#2f7a58;font-size:18px;box-shadow:0 7px 20px #20312d0a}
+.tamandua-chat-empty b{color:var(--ink);font-size:13px;font-weight:700;letter-spacing:-.15px}
+.tamandua-chat-empty p{max-width:35ch;margin:0;color:#809087;font-size:10.5px;line-height:1.6}
+.tamandua-chat-empty ul{display:grid;gap:5px;margin:7px 0 0;padding:0;list-style:none;text-align:left}
+.tamandua-chat-empty li{position:relative;padding-left:14px;color:#5f7067;font-size:10px;line-height:1.5}
+.tamandua-chat-empty li::before{position:absolute;left:2px;top:.62em;width:4px;height:4px;border-radius:50%;background:#7fb394;content:""}
+.tamandua-chat-empty small{margin-top:6px;color:#a0aaa3;font-size:8.5px;letter-spacing:.15px}
+
+/* Past conversations overlay: a compact picker, not a second page. It covers the transcript and the
+   composer so a mid-sentence draft cannot be mistaken for part of the selected conversation. */
+.tamandua-history{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;min-height:0;background:#fcfdfb}
+.tamandua-history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px 10px 14px;border-bottom:1px solid #edf1ec;background:#fff}
+.tamandua-history-title{display:grid;gap:2px;min-width:0}
+.tamandua-history-title b{color:var(--ink);font-size:11.5px;font-weight:700;letter-spacing:-.1px}
+.tamandua-history-title span{color:#8a9990;font-size:9px;line-height:1.3}
+.tamandua-history-body{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+.tamandua-history-list{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.tamandua-history-row{display:flex;align-items:flex-start;gap:8px;width:100%;padding:9px 10px;border:1px solid #e9eee8;border-radius:9px;background:#fff;color:inherit;text-align:left;font:inherit;transition:background .15s,border-color .15s}
+.tamandua-history-row:hover{border-color:#d7e5da;background:#f7fbf7}
+.tamandua-history-row.selected{border-color:#cfe0d4;background:#edf4ee}
+.tamandua-history-row-main{display:grid;flex:1;min-width:0;gap:3px}
+.tamandua-history-row-title{overflow:hidden;color:#2c3d37;font-size:10.5px;font-weight:650;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+.tamandua-history-row.selected .tamandua-history-row-title{color:#28644f}
+.tamandua-history-row-meta{color:#93a098;font-size:8.5px;line-height:1.4}
+.tamandua-history-current{flex:0 0 auto;padding:2px 6px;border-radius:20px;background:#dcebe0;color:#28644f;font-size:8px;font-weight:750;letter-spacing:.3px;line-height:1.5}
+.tamandua-history-open{flex:0 0 auto;color:#a2ada6;font-size:14px;line-height:1.2}
+.tamandua-history-note{margin:0;padding:26px 10px;color:#93a098;font-size:10px;text-align:center}
+.tamandua-history-empty{display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:28px 24px;text-align:center}
+.tamandua-history-empty-mark{display:grid;place-items:center;width:36px;height:36px;margin-bottom:2px;border:1px solid #dbe8dd;border-radius:11px;background:#fff;color:#2f7a58;font-size:16px}
+.tamandua-history-empty b{color:var(--ink);font-size:12px;font-weight:700;letter-spacing:-.1px}
+.tamandua-history-empty p{max-width:30ch;margin:0;color:#809087;font-size:10px;line-height:1.6}
+.tamandua-history-foot{margin:0;padding:8px 12px 10px;border-top:1px solid #edf1ec;background:#fcfdfb;color:#a0aaa3;font-size:8.5px;text-align:center}
+@media(max-width:430px){.tamandua-history-label{display:none}.tamandua-history-toggle{padding:6px}}
 .tamandua-gate{margin:0;padding:11px 13px;border-bottom:1px solid var(--line);background:#fff6f2;color:#8b4a35;font-size:10px;line-height:1.55}
 /* On /assistant the same panel is placed by the page, so it stops being a floating card. */
-.tamandua-inpage{flex:1;min-height:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.tamandua-inpage{flex:1;min-height:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
+.tamandua-inpage .tamandua-chat-empty{inset:0 0 108px}
+@media(min-width:1050px){.tamandua-inpage .tamandua-chat [data-testid="copilot-tool-call-group"] .tamandua-tool .tool-args{display:block;flex-basis:100%;color:#9aa69f;font-size:8px}}
+@media(max-width:760px){.tamandua-chat [data-testid="copilot-tool-call-group"]>button>span:nth-of-type(2){display:none}.tamandua-chat-empty{padding:18px 22px}.tamandua-chat-empty ul{margin-top:4px}}
+
 .tamandua-slot{display:flex;flex:1;flex-direction:column;min-height:0}
 .assistant-inspect{display:grid;gap:8px;padding-top:11px;border-top:1px solid var(--line);font-size:10px;color:#718078}
 .assistant-inspect summary{cursor:pointer;color:#4c6b5b;font-weight:650;list-style:none}

@@ -40,6 +40,33 @@ function toolCallPair(activity, rowId, index) {
   };
 }
 
+// A model sometimes closes a grounded answer with an inventory of the tools it called
+// ("From get_summary and list_prices on 2026-11-08"). The chat already renders that evidence as the
+// tool-activity row, so for stored history this is duplication. `stripToolInventory` removes only a
+// final paragraph that is essentially that inventory: it must start with a source word, mention at
+// least two tools that actually ran, and leave nothing but dates/connectors once those names are taken
+// out. A sentence that merely starts with "From" and goes on to say something is left alone.
+export function stripToolInventory(content, toolActivity) {
+  const text = String(content ?? '');
+  const names = [...new Set((Array.isArray(toolActivity) ? toolActivity : []).map((entry) => String(entry?.tool || '').trim()).filter(Boolean))];
+  if (names.length < 2) return text;
+  const paragraphs = text.split(/\n{2,}/);
+  if (paragraphs.length < 2) return text;
+  const last = paragraphs[paragraphs.length - 1].trim();
+  if (!/^(?:from|using|sources?)\b/i.test(last)) return text;
+  const mentioned = names.filter((name) => last.includes(name));
+  if (mentioned.length < 2) return text;
+  let remainder = last;
+  for (const name of mentioned) remainder = remainder.split(name).join(' ');
+  remainder = remainder
+    .replace(/\b(?:from|using|sources?|tools?|records?|dates?|and|on|in|with|the|as|of)\b/gi, ' ')
+    .replace(/\b(?:19|20)\d{2}-\d{2}(?:-\d{2})?\b/g, ' ')
+    .replace(/[×x]\d+/gi, ' ')
+    .replace(/[\s,;:().·–—-]+/g, ' ')
+    .trim();
+  return remainder.length <= 12 ? paragraphs.slice(0, -1).join('\n\n') : text;
+}
+
 export function historyToMessages(rows = []) {
   const messages = [];
   for (const row of rows) {
@@ -55,7 +82,7 @@ export function historyToMessages(rows = []) {
     messages.push({
       id,
       role: 'assistant',
-      content: row.content || '',
+      content: stripToolInventory(row.content || '', activity),
       ...(pairs.length ? { toolCalls: pairs.map((pair) => pair.call) } : {}),
     });
     messages.push(...pairs.map((pair) => pair.result));
